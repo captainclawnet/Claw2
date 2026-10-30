@@ -5,10 +5,10 @@
 <title>Claw 2 — Web</title>
 <style>
 body{margin:0;background:#10151d;color:#eee;font:16px system-ui;text-align:center}
-canvas{display:block;margin:auto;width:min(960px,100vw);height:min(540px,56.25vw);outline:none;background:#000}
-button{padding:.8em 2em;margin:1em} #status{padding:1em}
-#status:not(:empty)::before{content:'';display:inline-block;width:16px;height:16px;margin-right:12px;border:3px solid #465266;border-top-color:#eeb94e;border-radius:50%;vertical-align:middle;animation:asset-spin 1s linear infinite}
-@keyframes asset-spin{to{transform:rotate(360deg)}}
+#game{position:relative;margin:auto;width:min(960px,100vw)}
+canvas{display:block;width:100%;height:auto;outline:none;background:#000}
+#loading{position:absolute;inset:0;height:100%;background:transparent;pointer-events:none}
+#loading[hidden]{display:none}
 #touch-controls[hidden]{display:none}
 #touch-controls{position:fixed;inset:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none}
 .touch-pad,.touch-actions{position:absolute;bottom:max(16px,env(safe-area-inset-bottom));pointer-events:auto;touch-action:none}
@@ -19,9 +19,10 @@ button{padding:.8em 2em;margin:1em} #status{padding:1em}
 #touch-controls button.active{background:#d09535dd;border-color:#ffe1a3}
 .touch-pad span{pointer-events:none}
 </style>
-<button id="start" disabled>Uruchom grę</button>
-<div id="status" role="status">Pobieranie gry…</div>
-<canvas id="canvas" width="960" height="540" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+<div id="game">
+<canvas id="canvas" width="960" height="540" tabindex="0" aria-label="Claw 2" oncontextmenu="event.preventDefault()"></canvas>
+<canvas id="loading" width="960" height="540" role="status" aria-live="polite"></canvas>
+</div>
 <script src="claw-config.js"></script>
 <script>
 var Module = {
@@ -32,20 +33,55 @@ var Module = {
         // Keep the application status until the game explicitly replaces it.
         if (!text && Module.clawPhase !== 'running') return;
         Module.clawLastStatus = text;
-        const status = document.getElementById('status');
-        if (status) status.textContent = text;
-        else if (text) console.warn(text);
+        Module.clawDrawStatus();
+    },
+    clawDrawStatus: function () {
+        // Keep the 2D boot renderer separate from SDL's WebGL context.
+        const canvas = document.getElementById('loading');
+        const text = Module.clawLastStatus || '';
+        canvas.hidden = !text;
+        canvas.setAttribute('aria-label', text);
+        Module.canvas.style.cursor = Module.clawPhase === 'ready' ? 'pointer' : 'default';
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, 960, 540);
+        if (!text) return;
+        const running = Module.clawPhase === 'running';
+        ctx.fillStyle = running ? 'rgba(0,0,0,0.85)' : '#000';
+        ctx.fillRect(0, running ? 420 : 0, 960, running ? 120 : 540);
+        ctx.fillStyle = '#eeb94e';
+        ctx.textAlign = 'center';
+        ctx.font = '24px Georgia, serif';
+        const lines = [];
+        let line = '';
+        for (const word of text.split(/\s+/)) {
+            const candidate = line ? line + ' ' + word : word;
+            if (ctx.measureText(candidate).width > 840 && line) {
+                lines.push(line); line = word;
+            } else line = candidate;
+        }
+        if (line) lines.push(line);
+        // Bound long diagnostics to the canvas; complete details remain in the console.
+        const visible = lines.slice(0, running ? 3 : 12);
+        if (lines.length > visible.length) visible[visible.length - 1] += '…';
+        const percent = text.match(/(\d+(?:\.\d+)?)%/);
+        if (percent && !running) {
+            ctx.fillStyle = '#302819';
+            ctx.fillRect(270, 330, 420, 4);
+            ctx.fillStyle = '#eeb94e';
+            ctx.fillRect(270, 330, 420 * Math.min(100, Number(percent[1])) / 100, 4);
+        }
+        const center = running ? 480 : 270;
+        visible.forEach((line, i) => ctx.fillText(line, 480,
+            center + (i - (visible.length - 1) / 2) * 32, 840));
     },
     noInitialRun: true,
     onRuntimeInitialized: function () {
         Module.clawPhase = 'ready';
         Module.setStatus('Gotowe. Kliknij, aby uruchomić.');
-        const start = document.getElementById('start');
-        start.disabled = false;
-        start.onclick = function () {
+    },
+    clawStart: function () {
             if (Module.clawPhase !== 'ready') return;
             Module.clawPhase = 'starting';
-            start.disabled = true;
             Module.canvas.focus();
             Module.setStatus('Uruchamianie gry…');
             try {
@@ -58,7 +94,6 @@ var Module = {
             } catch (error) {
                 Module.clawFail(error.stack || String(error));
             }
-        };
     },
     clawFail: function (error) {
         Module.clawPhase = 'failed';
@@ -68,7 +103,6 @@ var Module = {
     clawStarted: function () {
         Module.clawPhase = 'running';
         Module.setStatus('');
-        document.getElementById('start').hidden = true;
     },
     printErr: function (text) {
         if (text.includes('[info]')) console.info(text);
@@ -82,6 +116,14 @@ var Module = {
     },
     onAbort: function (error) { Module.clawFail(error); }
 };
+Module.canvas.addEventListener('click', () => Module.clawStart());
+Module.canvas.addEventListener('keydown', event => {
+    if (Module.clawPhase === 'ready' && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        Module.clawStart();
+    }
+});
+Module.setStatus('Pobieranie gry…');
 window.addEventListener('error', event => Module.clawFail(event.error?.stack || event.message));
 window.addEventListener('unhandledrejection', event => Module.clawFail(event.reason));
 console.info('Claw Web', {browser:navigator.userAgent, language:navigator.language,
