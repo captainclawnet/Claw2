@@ -31,27 +31,28 @@ canvas{display:block;width:100%;height:100%;outline:none;background:#000}
 </div>
 <script src="claw-config.js"></script>
 <script>
+// Keep startup working if an older cached deployment config has only the asset URL.
+const clawScreenWidth = Number(globalThis.CLAW_SCREEN_WIDTH) || 640;
+const clawScreenHeight = Number(globalThis.CLAW_SCREEN_HEIGHT) || 480;
 function clawMeasureViewport() {
     let width = Math.max(320, Math.floor(innerWidth));
     let height = Math.max(180, Math.floor(innerHeight));
     if (height > width) [width, height] = [height, width];
-    const gameWidth = globalThis.CLAW_SCREEN_WIDTH;
-    const gameHeight = globalThis.CLAW_SCREEN_HEIGHT;
-    const scale = Math.min(width / gameWidth, height / gameHeight);
-    return {width: Math.floor(scale * gameWidth), height: Math.floor(scale * gameHeight)};
+    const scale = Math.min(width / clawScreenWidth, height / clawScreenHeight);
+    return {width: Math.floor(scale * clawScreenWidth), height: Math.floor(scale * clawScreenHeight)};
 }
 const initialGameSize = clawMeasureViewport();
 document.documentElement.style.setProperty('--game-width', initialGameSize.width + 'px');
 document.documentElement.style.setProperty('--game-height', initialGameSize.height + 'px');
 for (const id of ['canvas', 'loading']) {
-    document.getElementById(id).width = globalThis.CLAW_SCREEN_WIDTH;
-    document.getElementById(id).height = globalThis.CLAW_SCREEN_HEIGHT;
+    document.getElementById(id).width = clawScreenWidth;
+    document.getElementById(id).height = clawScreenHeight;
 }
 var Module = {
     clawAssetBaseURL: globalThis.CLAW_ASSET_BASE_URL || '/assets/',
     canvas: document.getElementById('canvas'),
-    clawViewport: {width: globalThis.CLAW_SCREEN_WIDTH, height: globalThis.CLAW_SCREEN_HEIGHT},
-    clawResolution: {width: globalThis.CLAW_SCREEN_WIDTH, height: globalThis.CLAW_SCREEN_HEIGHT},
+    clawViewport: {width: clawScreenWidth, height: clawScreenHeight},
+    clawResolution: {width: clawScreenWidth, height: clawScreenHeight},
     setStatus: function (text) {
         // Emscripten clears its loading status after onRuntimeInitialized.
         // Keep the application status until the game explicitly replaces it.
