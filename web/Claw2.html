@@ -7,9 +7,11 @@
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#10151d;color:#eee;font:16px system-ui;text-align:center}
 body.touch-controls-visible,#canvas.touch-controls-visible{cursor:none!important}
 #game{position:relative;margin:auto;width:100vw;height:100dvh;display:grid;place-items:center}
-canvas{display:block;width:100%;height:100%;object-fit:contain;outline:none;background:#000}
-#canvas{position:absolute;inset:0}
-#loading{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;background:transparent;pointer-events:none}
+canvas{display:block;width:100%;height:100%;outline:none;background:#000}
+#canvas,#loading{position:absolute;width:var(--game-width,100vw);height:var(--game-height,100dvh);left:50%;top:50%;transform:translate(-50%,-50%)}
+#loading{object-fit:fill;background:transparent;pointer-events:none}
+#rotate-prompt{display:none;position:fixed;inset:0;z-index:20;background:#10151df2;color:#fff;align-items:center;justify-content:center;padding:2rem;font:600 1.3rem system-ui}
+@media (orientation:portrait) and (pointer:coarse){#rotate-prompt{display:flex}}
 #loading[hidden]{display:none}
 #touch-controls[hidden]{display:none}
 #touch-controls{position:fixed;inset:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none}
@@ -26,15 +28,23 @@ canvas{display:block;width:100%;height:100%;object-fit:contain;outline:none;back
 <canvas id="canvas" width="960" height="540" tabindex="0" aria-label="Claw 2" oncontextmenu="event.preventDefault()"></canvas>
 <canvas id="loading" width="960" height="540" role="status" aria-live="polite"></canvas>
 </div>
+<div id="rotate-prompt" role="status">Rotate your device to landscape to play.</div>
 <script src="claw-config.js"></script>
 <script>
 function clawMeasureViewport() {
-    return {width: Math.max(320, Math.floor(innerWidth)), height: Math.max(180, Math.floor(innerHeight))};
+    let width = Math.max(320, Math.floor(innerWidth));
+    let height = Math.max(180, Math.floor(innerHeight));
+    if (height > width) [width, height] = [height, width];
+    const scale = Math.min(width / 16, height / 9);
+    return {width: Math.floor(scale * 16), height: Math.floor(scale * 9)};
 }
+const initialGameSize = clawMeasureViewport();
+document.documentElement.style.setProperty('--game-width', initialGameSize.width + 'px');
+document.documentElement.style.setProperty('--game-height', initialGameSize.height + 'px');
 var Module = {
     clawAssetBaseURL: globalThis.CLAW_ASSET_BASE_URL || '/assets/',
     canvas: document.getElementById('canvas'),
-    clawViewport: clawMeasureViewport(),
+    clawViewport: initialGameSize,
     setStatus: function (text) {
         // Emscripten clears its loading status after onRuntimeInitialized.
         // Keep the application status until the game explicitly replaces it.
@@ -127,13 +137,24 @@ var Module = {
     onAbort: function (error) { Module.clawFail(error); }
 };
 window.addEventListener('resize', function () {
-    const size = clawMeasureViewport();
-    if (size.width === Module.clawViewport.width && size.height === Module.clawViewport.height) return;
-    Module.clawViewport = size;
-    if (Module._clawResizeScreen) Module._clawResizeScreen(size.width, size.height);
-    else { Module.canvas.width = size.width; Module.canvas.height = size.height; }
-    Module.clawDrawStatus();
+    clearTimeout(Module.clawResizeTimer);
+    Module.clawResizeTimer = setTimeout(function () {
+        const size = clawMeasureViewport();
+        document.documentElement.style.setProperty('--game-width', size.width + 'px');
+        document.documentElement.style.setProperty('--game-height', size.height + 'px');
+        if (size.width === Module.clawViewport.width && size.height === Module.clawViewport.height) return;
+        Module.clawViewport = size;
+        if (Module._clawResizeScreen) Module._clawResizeScreen(size.width, size.height);
+        else { Module.canvas.width = size.width; Module.canvas.height = size.height; }
+        Module.clawDrawStatus();
+    }, 180);
 });
+function clawRequestLandscape() {
+    if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+}
+window.addEventListener('pointerdown', function(event) {
+    if (event.pointerType === 'touch') clawRequestLandscape();
+}, {once:true});
 Module.canvas.addEventListener('click', () => Module.clawStart());
 Module.canvas.addEventListener('keydown', event => {
     if (Module.clawPhase === 'ready' && (event.key === 'Enter' || event.key === ' ')) {
