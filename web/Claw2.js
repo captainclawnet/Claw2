@@ -123,6 +123,12 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
   spacer.style.gridColumn = "2";
   spacer.style.gridRow = "2";
   spacer.style.width = "clamp(36px,9vw,60px)";
+  pad.style.gridTemplateAreas = '". up ." "left . right" ". down ."';
+  upButton.style.gridArea = "up";
+  leftButton.style.gridArea = "left";
+  rightButton.style.gridArea = "right";
+  downButton.style.gridArea = "down";
+  spacer.style.gridArea = "center";
   addButton(actions, "Special", "Special attack (fire weapon)", 4, gameplayButtons);
   addButton(actions, "Attack", "Attack", 2, gameplayButtons);
   addButton(actions, "Jump", "Jump", 1, gameplayButtons);
@@ -144,6 +150,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
       held |= mask;
     }
     Module.clawTouchActions = held;
+    document.body.classList.toggle("touch-controls-visible", !controls.hidden);
     for (const button of buttons) {
       const active = (held & button.touchMask) === button.touchMask;
       button.classList.toggle("active", active);
@@ -187,7 +194,10 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
       clear();
       return;
     }
-    if (event.pointerType === "touch") controls.hidden = false;
+    if (event.pointerType === "touch") {
+      controls.hidden = false;
+      update();
+    }
   }, true);
   controls.addEventListener("pointerdown", function(event) {
     if (event.pointerType !== "touch") return;
