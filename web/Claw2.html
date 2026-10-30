@@ -10,8 +10,7 @@ body.touch-controls-visible,#canvas.touch-controls-visible{cursor:none!important
 canvas{display:block;width:100%;height:100%;outline:none;background:#000}
 #canvas,#loading{position:absolute;width:var(--game-width,100vw);height:var(--game-height,100dvh);left:50%;top:50%;transform:translate(-50%,-50%)}
 #loading{object-fit:fill;background:transparent;pointer-events:none}
-#rotate-prompt{display:none;position:fixed;inset:0;z-index:20;background:#10151df2;color:#fff;align-items:center;justify-content:center;padding:2rem;font:600 1.3rem system-ui}
-@media (orientation:portrait) and (pointer:coarse){#rotate-prompt{display:flex}}
+@media (orientation:portrait) and (pointer:coarse){#game{width:100dvh;height:100vw;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}#canvas,#loading{width:100dvh;height:100vw;left:50%;top:50%}.touch-pad,.touch-actions{transform:rotate(-90deg);transform-origin:center}}
 #loading[hidden]{display:none}
 #touch-controls[hidden]{display:none}
 #touch-controls{position:fixed;inset:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none}
@@ -28,7 +27,6 @@ canvas{display:block;width:100%;height:100%;outline:none;background:#000}
 <canvas id="canvas" width="960" height="540" tabindex="0" aria-label="Claw 2" oncontextmenu="event.preventDefault()"></canvas>
 <canvas id="loading" width="960" height="540" role="status" aria-live="polite"></canvas>
 </div>
-<div id="rotate-prompt" role="status">Rotate your device to landscape to play.</div>
 <script src="claw-config.js"></script>
 <script>
 function clawMeasureViewport() {
@@ -84,15 +82,21 @@ var Module = {
         const visible = lines.slice(0, running ? 3 : 12);
         if (lines.length > visible.length) visible[visible.length - 1] += '…';
         const percent = text.match(/(\d+(?:\.\d+)?)%/);
-        if (percent && !running) {
-            ctx.fillStyle = '#302819';
-            ctx.fillRect(270, 330, 420, 4);
-            ctx.fillStyle = '#eeb94e';
-            ctx.fillRect(270, 330, 420 * Math.min(100, Number(percent[1])) / 100, 4);
-        }
         const center = running ? viewport.height * 0.89 : viewport.height / 2;
+        const lineHeight = 32 * (viewport.width / 960);
+        const firstLineY = center - ((visible.length - 1) * lineHeight) / 2;
+        if (percent && !running) {
+            const barWidth = Math.min(420 * (viewport.width / 960), viewport.width * 0.72);
+            const barHeight = Math.max(3, 4 * (viewport.width / 960));
+            const barX = (viewport.width - barWidth) / 2;
+            const barY = firstLineY + Math.max(12 * (viewport.width / 960), lineHeight * 0.42);
+            ctx.fillStyle = '#302819';
+            ctx.fillRect(barX, barY, barWidth, barHeight);
+            ctx.fillStyle = '#eeb94e';
+            ctx.fillRect(barX, barY, barWidth * Math.min(100, Number(percent[1])) / 100, barHeight);
+        }
         visible.forEach((line, i) => ctx.fillText(line, viewport.width / 2,
-            center + (i - (visible.length - 1) / 2) * 32 * (viewport.width / 960), viewport.width * 0.88));
+            center + (i - (visible.length - 1) / 2) * lineHeight, viewport.width * 0.88));
     },
     noInitialRun: true,
     onRuntimeInitialized: function () {
@@ -142,19 +146,10 @@ window.addEventListener('resize', function () {
         const size = clawMeasureViewport();
         document.documentElement.style.setProperty('--game-width', size.width + 'px');
         document.documentElement.style.setProperty('--game-height', size.height + 'px');
-        if (size.width === Module.clawViewport.width && size.height === Module.clawViewport.height) return;
-        Module.clawViewport = size;
-        if (Module._clawResizeScreen) Module._clawResizeScreen(size.width, size.height);
-        else { Module.canvas.width = size.width; Module.canvas.height = size.height; }
-        Module.clawDrawStatus();
-    }, 180);
+        // Preserve SDL's backing resolution; CSS scales the rendered frame
+        // without desynchronizing the renderer's internal targets.
+    }, 400);
 });
-function clawRequestLandscape() {
-    if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
-}
-window.addEventListener('pointerdown', function(event) {
-    if (event.pointerType === 'touch') clawRequestLandscape();
-}, {once:true});
 Module.canvas.addEventListener('click', () => Module.clawStart());
 Module.canvas.addEventListener('keydown', event => {
     if (Module.clawPhase === 'ready' && (event.key === 'Enter' || event.key === ' ')) {
