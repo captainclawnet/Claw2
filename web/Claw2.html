@@ -2,6 +2,9 @@
 <html lang="pl">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#10151d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/claw-192.png">
 <title>Claw 2 — Web</title>
 <style>
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#10151d;color:#eee;font:16px system-ui;text-align:center}
@@ -10,7 +13,8 @@ body.touch-controls-visible,#canvas.touch-controls-visible{cursor:none!important
 canvas{display:block;width:100%;height:100%;outline:none;background:#000}
 #canvas,#loading{position:absolute;width:var(--game-width,100vw);height:var(--game-height,100dvh);left:50%;top:50%;transform:translate(-50%,-50%)}
 #loading{object-fit:fill;background:transparent;pointer-events:none}
-@media (orientation:portrait) and (pointer:coarse){#game{position:fixed;inset:0;width:100vw;height:100dvh;display:block;transform:none}#canvas,#loading{width:var(--game-width);height:var(--game-height);left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}}
+html.claw-rotated #game{position:fixed;inset:0;width:100vw;height:100dvh;display:block;transform:none}
+html.claw-rotated #canvas,html.claw-rotated #loading{width:var(--game-width);height:var(--game-height);left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}
 #loading[hidden]{display:none}
 #touch-controls[hidden]{display:none}
 #touch-controls{position:fixed;inset:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none}
@@ -23,7 +27,12 @@ canvas{display:block;width:100%;height:100%;outline:none;background:#000}
 #touch-controls .touch-actions button{width:clamp(54px,12vw,80px);height:clamp(54px,12vw,80px);border-radius:50%;font-size:12px}
 #touch-controls button.active{background:#d09535dd;border-color:#ffe1a3}
 .touch-pad span{pointer-events:none}
-@media (orientation:portrait) and (pointer:coarse){#touch-controls{inset:auto;width:100dvh;height:100vw;left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}.touch-pad,.touch-actions,.touch-menu{position:absolute}.touch-pad,.touch-actions{bottom:max(16px,env(safe-area-inset-bottom));top:auto}.touch-menu{top:max(16px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left))}.touch-pad{left:max(16px,env(safe-area-inset-left))}.touch-actions{right:max(16px,env(safe-area-inset-right))}}
+html.claw-rotated #touch-controls{inset:auto;width:100dvh;height:100vw;left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}
+html.claw-rotated .touch-pad,html.claw-rotated .touch-actions,html.claw-rotated .touch-menu{position:absolute}
+html.claw-rotated .touch-pad,html.claw-rotated .touch-actions{bottom:max(16px,env(safe-area-inset-bottom));top:auto}
+html.claw-rotated .touch-menu{top:max(16px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left))}
+html.claw-rotated .touch-pad{left:max(16px,env(safe-area-inset-left))}
+html.claw-rotated .touch-actions{right:max(16px,env(safe-area-inset-right))}
 </style>
 <div id="game">
 <canvas id="canvas" tabindex="0" aria-label="Claw 2" oncontextmenu="event.preventDefault()"></canvas>
@@ -31,10 +40,18 @@ canvas{display:block;width:100%;height:100%;outline:none;background:#000}
 </div>
 <script src="claw-config.js"></script>
 <script>
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener('load', function () {
+        navigator.serviceWorker.register('./service-worker.js').catch(function (error) {
+            console.warn('Offline app support could not be enabled:', error);
+        });
+    });
+}
 // Keep startup working if an older cached deployment config has only the asset URL.
 const clawScreenWidth = 640;
 const clawScreenHeight = 480;
 function clawMeasureViewport() {
+    document.documentElement.classList.toggle('claw-rotated', innerHeight > innerWidth);
     let width = Math.max(320, Math.floor(innerWidth));
     let height = Math.max(180, Math.floor(innerHeight));
     if (height > width) [width, height] = [height, width];
