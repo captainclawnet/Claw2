@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="pl">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Claw 2 — Web</title>
+<style>
+body{margin:0;background:#10151d;color:#eee;font:16px system-ui;text-align:center}
+canvas{display:block;margin:auto;width:min(960px,100vw);height:min(540px,56.25vw);outline:none;background:#000}
+button{padding:.8em 2em;margin:1em} #status{padding:1em}
+#status:not(:empty)::before{content:'';display:inline-block;width:16px;height:16px;margin-right:12px;border:3px solid #465266;border-top-color:#eeb94e;border-radius:50%;vertical-align:middle;animation:asset-spin 1s linear infinite}
+@keyframes asset-spin{to{transform:rotate(360deg)}}
+#touch-controls[hidden]{display:none}
+#touch-controls{position:fixed;inset:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none}
+.touch-pad,.touch-actions{position:absolute;bottom:max(16px,env(safe-area-inset-bottom));pointer-events:auto;touch-action:none}
+.touch-pad{left:max(16px,env(safe-area-inset-left));display:grid;grid-template-columns:repeat(3,clamp(36px,9vw,60px))}
+.touch-actions{right:max(16px,env(safe-area-inset-right));display:grid;grid-template-columns:repeat(2,auto);gap:8px}
+#touch-controls button{margin:0;padding:0;width:clamp(36px,9vw,60px);height:clamp(36px,9vw,60px);border:1px solid #ffffff80;border-radius:12px;background:#172536aa;color:white;font:bold 14px system-ui;touch-action:none}
+#touch-controls .touch-actions button{width:clamp(54px,12vw,80px);height:clamp(54px,12vw,80px);border-radius:50%;font-size:12px}
+#touch-controls button.active{background:#d09535dd;border-color:#ffe1a3}
+.touch-pad span{pointer-events:none}
+</style>
+<button id="start" disabled>Uruchom grę</button>
+<div id="status" role="status">Pobieranie gry…</div>
+<canvas id="canvas" width="960" height="540" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+<script src="claw-config.js"></script>
+<script>
+var Module = {
+    clawAssetBaseURL: globalThis.CLAW_ASSET_BASE_URL || '/assets/',
+    canvas: document.getElementById('canvas'),
+    setStatus: function (text) {
+        // Emscripten clears its loading status after onRuntimeInitialized.
+        // Keep the application status until the game explicitly replaces it.
+        if (!text && Module.clawPhase !== 'running') return;
+        Module.clawLastStatus = text;
+        const status = document.getElementById('status');
+        if (status) status.textContent = text;
+        else if (text) console.warn(text);
+    },
+    noInitialRun: true,
+    onRuntimeInitialized: function () {
+        Module.clawPhase = 'ready';
+        Module.setStatus('Gotowe. Kliknij, aby uruchomić.');
+        const start = document.getElementById('start');
+        start.disabled = false;
+        start.onclick = function () {
+            if (Module.clawPhase !== 'ready') return;
+            Module.clawPhase = 'starting';
+            start.disabled = true;
+            Module.canvas.focus();
+            Module.setStatus('Uruchamianie gry…');
+            try {
+                const args = Module.clawComparisonArguments ? Module.clawComparisonArguments() : [];
+                let code;
+                try { code = Module.callMain(args); }
+                finally { if (Module.clawComparisonClearToken) Module.clawComparisonClearToken(); }
+                if (code && Module.clawPhase !== 'failed')
+                    Module.clawFail('Gra zakończyła uruchamianie z kodem ' + code);
+            } catch (error) {
+                Module.clawFail(error.stack || String(error));
+            }
+        };
+    },
+    clawFail: function (error) {
+        Module.clawPhase = 'failed';
+        Module.setStatus('Błąd gry: ' + error);
+        console.error(error);
+    },
+    clawStarted: function () {
+        Module.clawPhase = 'running';
+        Module.setStatus('');
+        document.getElementById('start').hidden = true;
+    },
+    printErr: function (text) {
+        if (text.includes('[info]')) console.info(text);
+        else if (text.includes('[warning]')) console.warn(text);
+        else console.error(text);
+        if (Module.clawPhase === 'starting') {
+            // Keep the first specific failure, not a later cleanup message.
+            if (!Module.clawStartupError && text.includes('[error]')) Module.clawStartupError = text;
+            Module.setStatus('Uruchamianie gry: ' + text);
+        }
+    },
+    onAbort: function (error) { Module.clawFail(error); }
+};
+window.addEventListener('error', event => Module.clawFail(event.error?.stack || event.message));
+window.addEventListener('unhandledrejection', event => Module.clawFail(event.reason));
+console.info('Claw Web', {browser:navigator.userAgent, language:navigator.language,
+    cores:navigator.hardwareConcurrency, memoryGiB:navigator.deviceMemory,
+    screen:[screen.width,screen.height], viewport:[innerWidth,innerHeight],
+    pixelRatio:devicePixelRatio});
+</script>
+<script async type="text/javascript" src="Claw2.js"></script>
+</html>
