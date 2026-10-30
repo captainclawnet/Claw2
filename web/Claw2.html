@@ -32,8 +32,8 @@ canvas{display:block;width:100%;height:100%;outline:none;background:#000}
 <script src="claw-config.js"></script>
 <script>
 // Keep startup working if an older cached deployment config has only the asset URL.
-const clawScreenWidth = Number(globalThis.CLAW_SCREEN_WIDTH) || 640;
-const clawScreenHeight = Number(globalThis.CLAW_SCREEN_HEIGHT) || 480;
+const clawScreenWidth = 640;
+const clawScreenHeight = 480;
 function clawMeasureViewport() {
     let width = Math.max(320, Math.floor(innerWidth));
     let height = Math.max(180, Math.floor(innerHeight));
@@ -138,6 +138,12 @@ var Module = {
         Module.clawPhase = 'running';
         Module.setStatus('');
     },
+    clawQuit: function () {
+        window.close();
+        setTimeout(function () {
+            if (!window.closed) Module.setStatus('This browser does not allow this tab to close automatically. You can close it now.');
+        }, 150);
+    },
     printErr: function (text) {
         if (text.includes('[info]')) console.info(text);
         else if (text.includes('[warning]')) console.warn(text);
@@ -164,6 +170,14 @@ window.addEventListener('resize', function () {
     }, 400);
 });
 window.addEventListener('orientationchange', function () { window.dispatchEvent(new Event('resize')); });
+window.addEventListener('pointerdown', function () {
+    const root = document.documentElement;
+    const enterFullscreen = root.requestFullscreen ? root.requestFullscreen() : Promise.resolve();
+    enterFullscreen.then(function () {
+        if (screen.orientation && screen.orientation.lock)
+            return screen.orientation.lock('landscape').catch(function () {});
+    }).catch(function () {});
+}, {once:true, capture:true});
 Module.canvas.addEventListener('click', () => Module.clawStart());
 Module.canvas.addEventListener('keydown', event => {
     if (Module.clawPhase === 'ready' && (event.key === 'Enter' || event.key === ' ')) {
