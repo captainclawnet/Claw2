@@ -86,9 +86,14 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
   const actions = document.createElement("div");
   actions.className = "touch-actions";
   const buttons = [];
+  const gameplayButtons = [];
+  const menuButtons = [];
   const pointers = new Map;
+  const pointerButtons = new Map;
+  let menuSelectHeld = false;
+  let menuBackHeld = false;
   const left = 16777216, right = 33554432, up = 67108864, down = 134217728;
-  function addButton(parent, label, name, mask) {
+  function addButton(parent, label, name, mask, group) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = label;
@@ -98,26 +103,33 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
     button.touchMask = mask;
     parent.appendChild(button);
     buttons.push(button);
+    if (group) group.push(button);
   }
-  addButton(pad, "↖", "Up left", up | left);
   addButton(pad, "▲", "Up", up);
-  addButton(pad, "↗", "Up right", up | right);
   addButton(pad, "◀", "Left", left);
   pad.appendChild(document.createElement("span"));
   addButton(pad, "▶", "Right", right);
-  addButton(pad, "↙", "Down left", down | left);
   addButton(pad, "▼", "Down", down);
-  addButton(pad, "↘", "Down right", down | right);
-  addButton(actions, "Special", "Special attack (fire weapon)", 4);
-  addButton(actions, "Attack", "Attack", 2);
-  addButton(actions, "Jump", "Jump", 1);
-  addButton(actions, "Switch", "Toggle special weapon", 8);
+  addButton(actions, "Special", "Special attack (fire weapon)", 4, gameplayButtons);
+  addButton(actions, "Attack", "Attack", 2, gameplayButtons);
+  addButton(actions, "Jump", "Jump", 1, gameplayButtons);
+  addButton(actions, "Switch", "Toggle special weapon", 8, gameplayButtons);
+  addButton(actions, "Select", "Select menu item", 16, menuButtons);
+  addButton(actions, "Back", "Back or cancel", 32, menuButtons);
   controls.appendChild(pad);
   controls.appendChild(actions);
   document.body.appendChild(controls);
   function update() {
+    const playing = Module.clawGameState === 3 || Module.clawGameState === 4;
+    const initialized = Module.clawGameState > 0;
+    for (const button of gameplayButtons) button.hidden = !playing;
+    for (const button of menuButtons) button.hidden = !initialized || playing;
     let held = 0;
-    for (const mask of pointers.values()) held |= mask;
+    for (const [id, mask] of pointers) {
+      const button = pointerButtons.get(id);
+      if ((playing && menuButtons.includes(button)) || (!playing && gameplayButtons.includes(button))) continue;
+      held |= mask;
+    }
     Module.clawTouchActions = held;
     for (const button of buttons) {
       const active = (held & button.touchMask) === button.touchMask;
@@ -136,6 +148,25 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
     }
     const target = document.elementFromPoint(event.clientX, event.clientY);
     pointers.set(event.pointerId, buttons.includes(target) ? target.touchMask : 0);
+    pointerButtons.set(event.pointerId, buttons.includes(target) ? target : null);
+    const button = buttons.includes(target) ? target : null;
+    if (button === menuButtons[0] || button === menuButtons[1]) {
+      const isSelect = button === menuButtons[0];
+      if (!(isSelect ? menuSelectHeld : menuBackHeld)) {
+        const key = isSelect ? "Enter" : "Escape";
+        Module.canvas.dispatchEvent(new KeyboardEvent("keydown", {
+          key,
+          code: key,
+          bubbles: true
+        }));
+        Module.canvas.dispatchEvent(new KeyboardEvent("keyup", {
+          key,
+          code: key,
+          bubbles: true
+        }));
+      }
+      if (isSelect) menuSelectHeld = true; else menuBackHeld = true;
+    }
     update();
   }
   window.addEventListener("pointerdown", function(event) {
@@ -158,17 +189,23 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
     move(event);
   });
   function release(event) {
+    const button = pointerButtons.get(event.pointerId);
+    if (button === menuButtons[0]) menuSelectHeld = false;
+    if (button === menuButtons[1]) menuBackHeld = false;
     pointers.delete(event.pointerId);
+    pointerButtons.delete(event.pointerId);
     update();
   }
   for (const type of [ "pointerup", "pointercancel", "lostpointercapture" ]) controls.addEventListener(type, release);
   controls.addEventListener("contextmenu", event => event.preventDefault());
   window.addEventListener("blur", clear);
+  window.addEventListener("claw-game-state-change", update);
   window.addEventListener("claw-developer-editing", clear);
   window.addEventListener("pagehide", clear);
   document.addEventListener("visibilitychange", function() {
     if (document.hidden) clear();
   });
+  Module.clawGameState = 0;
   update();
 })();
 
@@ -845,6 +882,7 @@ function updateMemoryViews() {
   HEAPF32 = new Float32Array(b);
   HEAPF64 = new Float64Array(b);
   HEAP64 = new BigInt64Array(b);
+  HEAPU64 = new BigUint64Array(b);
 }
 
 // include: memoryprofiler.js
@@ -8062,6 +8100,12 @@ var _emscripten_resize_heap = requestedSize => {
   return false;
 };
 
+/** not-@type {!BigUint64Array} */ var HEAPU64;
+
+var _emscripten_run_script = ptr => {
+  eval(UTF8ToString(ptr));
+};
+
 /** @suppress {checkTypes} */ var _emscripten_sample_gamepad_data = () => {
   try {
     if (navigator.getGamepads) return (JSEvents.lastGamepadState = navigator.getGamepads()) ? 0 : -1;
@@ -9234,7 +9278,7 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  696012: () => {
+  696092: () => {
     const token = Module.clawComparison && Module.clawComparison.token;
     if (typeof token !== "string") return 0;
     const size = lengthBytesUTF8(token) + 1;
@@ -9242,32 +9286,32 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  696249: () => {
+  696329: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  696371: $0 => {
+  696451: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  696437: () => {
+  696517: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  696500: () => {
+  696580: () => {
     Module.setStatus("Gra została zatrzymana. Odśwież stronę, aby uruchomić ją ponownie.");
   },
-  696598: $0 => {
+  696678: $0 => {
     Module.setStatus("Błąd renderowania: " + UTF8ToString($0));
   },
-  696664: () => {
+  696744: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  696725: () => {
+  696805: () => {
     Module.clawTextShader = null;
   },
-  696759: () => {
+  696839: () => {
     Module.clawTextUniforms = {};
   },
-  696793: ($0, $1, $2, $3) => {
+  696873: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -9277,37 +9321,37 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  696946: ($0, $1, $2, $3, $4) => {
+  697026: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  697011: ($0, $1) => {
+  697091: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  697065: ($0, $1, $2) => {
+  697145: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  697124: $0 => {
+  697204: $0 => {
     Module.clawRequestLevel($0);
   },
-  697157: $0 => Module.clawLevels[$0].status,
-  697198: $0 => Module.clawLevels[$0].progress,
-  697241: $0 => Module.clawLevels[$0].status,
-  697282: $0 => {
+  697237: $0 => Module.clawLevels[$0].status,
+  697278: $0 => Module.clawLevels[$0].progress,
+  697321: $0 => Module.clawLevels[$0].status,
+  697362: $0 => {
     delete Module.clawLevels[$0];
   },
-  697316: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  697379: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  697442: $0 => {
+  697396: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  697459: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  697522: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  697490: () => !!globalThis.clawDiscordActivity,
-  697535: () => {
+  697570: () => !!globalThis.clawDiscordActivity,
+  697615: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  697657: () => Module.clawTouchActions || 0,
-  697698: $0 => {
+  697737: () => Module.clawTouchActions || 0,
+  697778: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -9315,10 +9359,10 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  697913: ($0, $1) => {
+  697993: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  697970: () => {
+  698050: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9327,7 +9371,7 @@ var ASM_CONSTS = {
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  698216: ($0, $1, $2, $3, $4) => {
+  698296: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -9336,14 +9380,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  698408: $0 => {
+  698488: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  698539: () => {
+  698619: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -9351,7 +9395,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  698686: () => {
+  698766: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     } else if (typeof (navigator.webkitGetUserMedia) !== "undefined") {
@@ -9359,7 +9403,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  698920: $0 => {
+  699e3: $0 => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9383,8 +9427,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  699483: () => Module["SDL3"].audioContext.sampleRate,
-  699534: ($0, $1, $2, $3) => {
+  699563: () => Module["SDL3"].audioContext.sampleRate,
+  699614: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9426,7 +9470,7 @@ var ASM_CONSTS = {
       }, have_microphone, no_microphone);
     }
   },
-  701375: ($0, $1, $2, $3) => {
+  701455: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     SDL3.audio_playback.scriptProcessorNode = SDL3.audioContext["createScriptProcessor"]($1, 0, $0);
     SDL3.audio_playback.scriptProcessorNode["onaudioprocess"] = function(e) {
@@ -9458,7 +9502,7 @@ var ASM_CONSTS = {
       SDL3.audio_playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  702691: $0 => {
+  702771: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9492,7 +9536,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  703847: ($0, $1) => {
+  703927: ($0, $1) => {
     var buf = $0 >>> 2;
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -9506,7 +9550,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  704360: ($0, $1) => {
+  704440: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -9525,14 +9569,14 @@ var ASM_CONSTS = {
       }
     }
   },
-  704987: () => {
+  705067: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
     Module["SDL3"].camera = {};
   },
-  705088: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  705147: ($0, $1, $2, $3, $4, $5, $6) => {
+  705168: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  705227: ($0, $1, $2, $3, $4, $5, $6) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -9606,7 +9650,7 @@ var ASM_CONSTS = {
       dynCall("iiiiii", outcome, [ device, 0, 0, 0, 0 ]);
     });
   },
-  707438: () => {
+  707518: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -9614,7 +9658,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  707689: ($0, $1, $2) => {
+  707769: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -9627,12 +9671,12 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  708067: () => {
+  708147: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  708154: $0 => {
+  708234: $0 => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9643,7 +9687,7 @@ var ASM_CONSTS = {
     }
     return 1;
   },
-  708329: ($0, $1, $2) => {
+  708409: ($0, $1, $2) => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9660,7 +9704,7 @@ var ASM_CONSTS = {
     });
     return 1;
   },
-  708665: ($0, $1) => {
+  708745: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -9694,7 +9738,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  709373: ($0, $1, $2, $3) => {
+  709453: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -9753,7 +9797,7 @@ var ASM_CONSTS = {
     }
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
   },
-  710602: ($0, $1, $2, $3, $4) => {
+  710682: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -9774,17 +9818,17 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  711260: $0 => {
+  711340: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  711343: () => {
+  711423: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  711412: ($0, $1, $2) => {
+  711492: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -9844,7 +9888,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointermove", SDL3.eventHandlerPointerGeneric);
     }
   },
-  713205: ($0, $1, $2) => {
+  713285: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -9912,7 +9956,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  715358: $0 => {
+  715438: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -9928,7 +9972,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  716188: $0 => {
+  716268: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -9943,7 +9987,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerPointerGeneric = undefined;
     }
   },
-  716873: () => {
+  716953: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -9955,7 +9999,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  717082: () => {
+  717162: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -9963,17 +10007,17 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  717335: () => window.innerWidth,
-  717365: () => window.innerHeight,
-  717396: $0 => {
+  717415: () => window.innerWidth,
+  717445: () => window.innerHeight,
+  717476: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  717505: () => {
+  717585: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  717579: () => {
+  717659: () => {
     if (window.matchMedia) {
       if (typeof (Module["SDL3"]) === "undefined") {
         Module["SDL3"] = {};
@@ -9986,14 +10030,14 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  717970: $0 => {
+  718050: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  718010: () => {
+  718090: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  718127: $0 => {
+  718207: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
@@ -10413,6 +10457,7 @@ var wasmImports = {
   /** @export */ emscripten_request_fullscreen_strategy: _emscripten_request_fullscreen_strategy,
   /** @export */ emscripten_request_pointerlock: _emscripten_request_pointerlock,
   /** @export */ emscripten_resize_heap: _emscripten_resize_heap,
+  /** @export */ emscripten_run_script: _emscripten_run_script,
   /** @export */ emscripten_sample_gamepad_data: _emscripten_sample_gamepad_data,
   /** @export */ emscripten_set_beforeunload_callback_on_thread: _emscripten_set_beforeunload_callback_on_thread,
   /** @export */ emscripten_set_blur_callback_on_thread: _emscripten_set_blur_callback_on_thread,

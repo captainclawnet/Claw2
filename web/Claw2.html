@@ -12,7 +12,8 @@ canvas{display:block;width:100%;height:auto;outline:none;background:#000}
 #touch-controls[hidden]{display:none}
 #touch-controls{position:fixed;inset:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none}
 .touch-pad,.touch-actions{position:absolute;bottom:max(16px,env(safe-area-inset-bottom));pointer-events:auto;touch-action:none}
-.touch-pad{left:max(16px,env(safe-area-inset-left));display:grid;grid-template-columns:repeat(3,clamp(36px,9vw,60px))}
+.touch-pad[hidden],.touch-actions button[hidden]{display:none}
+.touch-pad{left:max(16px,env(safe-area-inset-left));display:grid;grid-template-columns:repeat(3,clamp(36px,9vw,60px));grid-template-rows:repeat(3,clamp(36px,9vw,60px))}
 .touch-actions{right:max(16px,env(safe-area-inset-right));display:grid;grid-template-columns:repeat(2,auto);gap:8px}
 #touch-controls button{margin:0;padding:0;width:clamp(36px,9vw,60px);height:clamp(36px,9vw,60px);border:1px solid #ffffff80;border-radius:12px;background:#172536aa;color:white;font:bold 14px system-ui;touch-action:none}
 #touch-controls .touch-actions button{width:clamp(54px,12vw,80px);height:clamp(54px,12vw,80px);border-radius:50%;font-size:12px}
@@ -24,6 +25,7 @@ canvas{display:block;width:100%;height:auto;outline:none;background:#000}
 <canvas id="loading" width="960" height="540" role="status" aria-live="polite"></canvas>
 </div>
 <script src="claw-config.js"></script>
+<script src="touch-controls.js"></script>
 <script>
 var Module = {
     clawAssetBaseURL: globalThis.CLAW_ASSET_BASE_URL || '/assets/',
