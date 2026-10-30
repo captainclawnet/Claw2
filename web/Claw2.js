@@ -90,9 +90,11 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
   const menuButtons = [];
   const pointers = new Map;
   const pointerButtons = new Map;
+  const menuDirectionHeld = new Map;
   let menuSelectHeld = false;
   let menuBackHeld = false;
   const left = 16777216, right = 33554432, up = 67108864, down = 134217728;
+  const directionKeys = new Map([ [ up, "ArrowUp" ], [ down, "ArrowDown" ], [ left, "ArrowLeft" ], [ right, "ArrowRight" ] ]);
   function addButton(parent, label, name, mask, group) {
     const button = document.createElement("button");
     button.type = "button";
@@ -151,6 +153,9 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
     }
     Module.clawTouchActions = held;
     document.body.classList.toggle("touch-controls-visible", !controls.hidden);
+    document.documentElement.style.cursor = controls.hidden ? "" : "none";
+    document.body.style.cursor = controls.hidden ? "" : "none";
+    Module.canvas.style.cursor = controls.hidden ? "" : "none";
     for (const button of buttons) {
       const active = (held & button.touchMask) === button.touchMask;
       button.classList.toggle("active", active);
@@ -161,6 +166,18 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
     pointers.clear();
     update();
   }
+  function dispatchMenuKey(key) {
+    Module.canvas.dispatchEvent(new KeyboardEvent("keydown", {
+      key,
+      code: key,
+      bubbles: true
+    }));
+    Module.canvas.dispatchEvent(new KeyboardEvent("keyup", {
+      key,
+      code: key,
+      bubbles: true
+    }));
+  }
   function move(event) {
     if (Module.clawDeveloperEditing) {
       clear();
@@ -170,21 +187,15 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
     pointers.set(event.pointerId, buttons.includes(target) ? target.touchMask : 0);
     pointerButtons.set(event.pointerId, buttons.includes(target) ? target : null);
     const button = buttons.includes(target) ? target : null;
-    if (button === menuButtons[0] || button === menuButtons[1]) {
+    const playing = Module.clawGameState === 3 || Module.clawGameState === 4;
+    if (!playing && directionKeys.has(button && button.touchMask)) {
+      const key = directionKeys.get(button.touchMask);
+      if (!menuDirectionHeld.has(event.pointerId)) dispatchMenuKey(key);
+      menuDirectionHeld.set(event.pointerId, key);
+      pointers.set(event.pointerId, 0);
+    } else if (!playing && (button === menuButtons[0] || button === menuButtons[1])) {
       const isSelect = button === menuButtons[0];
-      if (!(isSelect ? menuSelectHeld : menuBackHeld)) {
-        const key = isSelect ? "Enter" : "Escape";
-        Module.canvas.dispatchEvent(new KeyboardEvent("keydown", {
-          key,
-          code: key,
-          bubbles: true
-        }));
-        Module.canvas.dispatchEvent(new KeyboardEvent("keyup", {
-          key,
-          code: key,
-          bubbles: true
-        }));
-      }
+      if (!(isSelect ? menuSelectHeld : menuBackHeld)) dispatchMenuKey(isSelect ? "Enter" : "Escape");
       if (isSelect) menuSelectHeld = true; else menuBackHeld = true;
     }
     update();
@@ -196,6 +207,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
     }
     if (event.pointerType === "touch") {
       controls.hidden = false;
+      if (Module.clawHideCursor) Module.clawHideCursor();
       update();
     }
   }, true);
@@ -212,6 +224,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
     move(event);
   });
   function release(event) {
+    menuDirectionHeld.delete(event.pointerId);
     const button = pointerButtons.get(event.pointerId);
     if (button === menuButtons[0]) menuSelectHeld = false;
     if (button === menuButtons[1]) menuBackHeld = false;
@@ -9113,6 +9126,11 @@ var dynCall = (sig, ptr, args = [], promising = false) => {
   return convert(rtn);
 };
 
+var writeArrayToMemory = (array, buffer) => {
+  assert(array.length >= 0, "writeArrayToMemory array must have a length (should be an array or typed array)");
+  HEAP8.set(array, buffer);
+};
+
 /**
    * @param {number} ptr
    * @param {number} value
@@ -9156,6 +9174,66 @@ var dynCall = (sig, ptr, args = [], promising = false) => {
     abort(`invalid type for setValue: ${type}`);
   }
 }
+
+var getCFunc = ident => {
+  var func = Module["_" + ident];
+  // closure exported function
+  assert(func, `Cannot call unknown function ${ident}, make sure it is exported`);
+  return func;
+};
+
+/**
+   * @param {string|null=} returnType
+   * @param {Array=} argTypes
+   * @param {Array=} args
+   * @param {Object=} opts
+   */ var ccall = (ident, returnType, argTypes, args, opts) => {
+  // For fast lookup of conversion functions
+  var toC = {
+    "string": str => {
+      var ret = 0;
+      if (str !== null && str !== undefined && str !== 0) {
+        // null string
+        ret = stringToUTF8OnStack(str);
+      }
+      return ret;
+    },
+    "array": arr => {
+      var ret = stackAlloc(arr.length);
+      writeArrayToMemory(arr, ret);
+      return ret;
+    }
+  };
+  function convertReturnValue(ret) {
+    if (returnType === "string") {
+      return UTF8ToString(ret);
+    }
+    if (returnType === "boolean") return Boolean(ret);
+    return ret;
+  }
+  var func = getCFunc(ident);
+  var cArgs = [];
+  var stack = 0;
+  assert(returnType !== "array", 'return type should not be "array"');
+  if (args) {
+    for (var i = 0; i < args.length; i++) {
+      var converter = toC[argTypes[i]];
+      if (converter) {
+        if (!stack) stack = stackSave();
+        cArgs[i] = converter(args[i]);
+      } else {
+        cArgs[i] = args[i];
+      }
+    }
+  }
+  var ret = func(...cArgs);
+  function onDone(ret) {
+    if (stack) stackRestore(stack);
+    return convertReturnValue(ret);
+  }
+  ret = onDone(ret);
+  return ret;
+};
 
 var FS_createPath = (...args) => FS.createPath(...args);
 
@@ -9246,6 +9324,8 @@ Module["addRunDependency"] = addRunDependency;
 
 Module["removeRunDependency"] = removeRunDependency;
 
+Module["ccall"] = ccall;
+
 Module["FS_preloadFile"] = FS_preloadFile;
 
 Module["FS_unlink"] = FS_unlink;
@@ -9258,7 +9338,7 @@ Module["FS_createDataFile"] = FS_createDataFile;
 
 Module["FS_createLazyFile"] = FS_createLazyFile;
 
-var missingLibrarySymbols = [ "writeI53ToI64Clamped", "writeI53ToI64Signaling", "writeI53ToU64Clamped", "writeI53ToU64Signaling", "convertI32PairToI53", "convertI32PairToI53Checked", "convertU32PairToI53", "getTempRet0", "createNamedFunction", "zeroMemory", "withStackSave", "inetPton4", "inetNtop4", "inetPton6", "inetNtop6", "readSockaddr", "writeSockaddr", "getDynCaller", "runtimeKeepalivePush", "runtimeKeepalivePop", "asmjsMangle", "addOnInit", "addOnPostCtor", "addOnPreMain", "STACK_SIZE", "STACK_ALIGN", "POINTER_SIZE", "ASSERTIONS", "ccall", "cwrap", "convertJsFunctionToWasm", "getEmptyTableSlot", "updateTableMap", "getFunctionAddress", "addFunction", "removeFunction", "getValue", "intArrayToString", "AsciiToString", "stringToAscii", "UTF16ToString", "stringToUTF16", "lengthBytesUTF16", "UTF32ToString", "stringToUTF32", "lengthBytesUTF32", "fillDeviceOrientationEventData", "registerDeviceOrientationEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "hideEverythingExceptGivenElement", "restoreHiddenElements", "softFullscreenResizeWebGLRenderTarget", "registerPointerlockErrorEventCallback", "fillBatteryEventData", "registerBatteryEventCallback", "jsStackTrace", "getCallstack", "convertPCtoSourceLocation", "wasiRightsToMuslOFlags", "wasiOFlagsToMuslOFlags", "safeClearTimeout", "setImmediateWrapped", "safeRequestAnimationFrame", "clearImmediateWrapped", "registerPostMainLoop", "registerPreMainLoop", "getPromise", "makePromise", "addPromise", "idsToPromises", "makePromiseCallback", "incrementUncaughtExceptionCount", "decrementUncaughtExceptionCount", "Browser_asyncPrepareDataCounter", "arraySum", "addDays", "getSocketFromFD", "getSocketAddress", "FS_mkdirTree", "_setNetworkCallback", "writeGLArray", "registerWebGlEventCallback", "runAndAbortIfError", "writeStringToMemory", "writeAsciiToMemory", "allocateUTF8", "allocateUTF8OnStack", "demangle", "stackTrace", "getNativeTypeSize" ];
+var missingLibrarySymbols = [ "writeI53ToI64Clamped", "writeI53ToI64Signaling", "writeI53ToU64Clamped", "writeI53ToU64Signaling", "convertI32PairToI53", "convertI32PairToI53Checked", "convertU32PairToI53", "getTempRet0", "createNamedFunction", "zeroMemory", "withStackSave", "inetPton4", "inetNtop4", "inetPton6", "inetNtop6", "readSockaddr", "writeSockaddr", "getDynCaller", "runtimeKeepalivePush", "runtimeKeepalivePop", "asmjsMangle", "addOnInit", "addOnPostCtor", "addOnPreMain", "STACK_SIZE", "STACK_ALIGN", "POINTER_SIZE", "ASSERTIONS", "cwrap", "convertJsFunctionToWasm", "getEmptyTableSlot", "updateTableMap", "getFunctionAddress", "addFunction", "removeFunction", "getValue", "intArrayToString", "AsciiToString", "stringToAscii", "UTF16ToString", "stringToUTF16", "lengthBytesUTF16", "UTF32ToString", "stringToUTF32", "lengthBytesUTF32", "fillDeviceOrientationEventData", "registerDeviceOrientationEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "hideEverythingExceptGivenElement", "restoreHiddenElements", "softFullscreenResizeWebGLRenderTarget", "registerPointerlockErrorEventCallback", "fillBatteryEventData", "registerBatteryEventCallback", "jsStackTrace", "getCallstack", "convertPCtoSourceLocation", "wasiRightsToMuslOFlags", "wasiOFlagsToMuslOFlags", "safeClearTimeout", "setImmediateWrapped", "safeRequestAnimationFrame", "clearImmediateWrapped", "registerPostMainLoop", "registerPreMainLoop", "getPromise", "makePromise", "addPromise", "idsToPromises", "makePromiseCallback", "incrementUncaughtExceptionCount", "decrementUncaughtExceptionCount", "Browser_asyncPrepareDataCounter", "arraySum", "addDays", "getSocketFromFD", "getSocketAddress", "FS_mkdirTree", "_setNetworkCallback", "writeGLArray", "registerWebGlEventCallback", "runAndAbortIfError", "writeStringToMemory", "writeAsciiToMemory", "allocateUTF8", "allocateUTF8OnStack", "demangle", "stackTrace", "getNativeTypeSize" ];
 
 missingLibrarySymbols.forEach(missingLibrarySymbol);
 
@@ -9301,7 +9381,7 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  695676: () => {
+  695692: () => {
     const token = Module.clawComparison && Module.clawComparison.token;
     if (typeof token !== "string") return 0;
     const size = lengthBytesUTF8(token) + 1;
@@ -9309,32 +9389,44 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  695913: () => {
+  695929: () => Module.clawViewport.width,
+  695967: () => Module.clawViewport.height,
+  696006: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  696035: $0 => {
+  696128: () => {
+    Module.clawResizeScreen = function(width, height) {
+      _clawResizeScreen(width, height);
+    };
+  },
+  696221: () => {
+    Module.clawHideCursor = function() {
+      _clawHideCursor();
+    };
+  },
+  696284: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  696101: () => {
+  696350: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  696164: () => {
+  696413: () => {
     Module.setStatus("Gra została zatrzymana. Odśwież stronę, aby uruchomić ją ponownie.");
   },
-  696262: $0 => {
+  696511: $0 => {
     Module.setStatus("Błąd renderowania: " + UTF8ToString($0));
   },
-  696328: () => {
+  696577: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  696389: () => {
+  696638: () => {
     Module.clawTextShader = null;
   },
-  696423: () => {
+  696672: () => {
     Module.clawTextUniforms = {};
   },
-  696457: ($0, $1, $2, $3) => {
+  696706: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -9344,37 +9436,37 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  696610: ($0, $1, $2, $3, $4) => {
+  696859: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  696675: ($0, $1) => {
+  696924: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  696729: ($0, $1, $2) => {
+  696978: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  696788: $0 => {
+  697037: $0 => {
     Module.clawRequestLevel($0);
   },
-  696821: $0 => Module.clawLevels[$0].status,
-  696862: $0 => Module.clawLevels[$0].progress,
-  696905: $0 => Module.clawLevels[$0].status,
-  696946: $0 => {
+  697070: $0 => Module.clawLevels[$0].status,
+  697111: $0 => Module.clawLevels[$0].progress,
+  697154: $0 => Module.clawLevels[$0].status,
+  697195: $0 => {
     delete Module.clawLevels[$0];
   },
-  696980: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  697043: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  697106: $0 => {
+  697229: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  697292: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  697355: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  697154: () => !!globalThis.clawDiscordActivity,
-  697199: () => {
+  697403: () => !!globalThis.clawDiscordActivity,
+  697448: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  697321: () => Module.clawTouchActions || 0,
-  697362: $0 => {
+  697570: () => Module.clawTouchActions || 0,
+  697611: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -9382,10 +9474,10 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  697577: ($0, $1) => {
+  697826: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  697634: () => {
+  697883: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9394,7 +9486,7 @@ var ASM_CONSTS = {
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  697880: ($0, $1, $2, $3, $4) => {
+  698129: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -9403,14 +9495,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  698072: $0 => {
+  698321: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  698203: () => {
+  698452: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -9418,7 +9510,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  698350: () => {
+  698599: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     } else if (typeof (navigator.webkitGetUserMedia) !== "undefined") {
@@ -9426,7 +9518,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  698584: $0 => {
+  698833: $0 => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9450,8 +9542,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  699147: () => Module["SDL3"].audioContext.sampleRate,
-  699198: ($0, $1, $2, $3) => {
+  699396: () => Module["SDL3"].audioContext.sampleRate,
+  699447: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9493,7 +9585,7 @@ var ASM_CONSTS = {
       }, have_microphone, no_microphone);
     }
   },
-  701039: ($0, $1, $2, $3) => {
+  701288: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     SDL3.audio_playback.scriptProcessorNode = SDL3.audioContext["createScriptProcessor"]($1, 0, $0);
     SDL3.audio_playback.scriptProcessorNode["onaudioprocess"] = function(e) {
@@ -9525,7 +9617,7 @@ var ASM_CONSTS = {
       SDL3.audio_playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  702355: $0 => {
+  702604: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9559,7 +9651,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  703511: ($0, $1) => {
+  703760: ($0, $1) => {
     var buf = $0 >>> 2;
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -9573,7 +9665,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  704024: ($0, $1) => {
+  704273: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -9592,14 +9684,14 @@ var ASM_CONSTS = {
       }
     }
   },
-  704651: () => {
+  704900: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
     Module["SDL3"].camera = {};
   },
-  704752: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  704811: ($0, $1, $2, $3, $4, $5, $6) => {
+  705001: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  705060: ($0, $1, $2, $3, $4, $5, $6) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -9673,7 +9765,7 @@ var ASM_CONSTS = {
       dynCall("iiiiii", outcome, [ device, 0, 0, 0, 0 ]);
     });
   },
-  707102: () => {
+  707351: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -9681,7 +9773,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  707353: ($0, $1, $2) => {
+  707602: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -9694,12 +9786,12 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  707731: () => {
+  707980: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  707818: $0 => {
+  708067: $0 => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9710,7 +9802,7 @@ var ASM_CONSTS = {
     }
     return 1;
   },
-  707993: ($0, $1, $2) => {
+  708242: ($0, $1, $2) => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9727,7 +9819,7 @@ var ASM_CONSTS = {
     });
     return 1;
   },
-  708329: ($0, $1) => {
+  708578: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -9761,7 +9853,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  709037: ($0, $1, $2, $3) => {
+  709286: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -9820,7 +9912,7 @@ var ASM_CONSTS = {
     }
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
   },
-  710266: ($0, $1, $2, $3, $4) => {
+  710515: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -9841,17 +9933,17 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  710924: $0 => {
+  711173: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  711007: () => {
+  711256: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  711076: ($0, $1, $2) => {
+  711325: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -9911,7 +10003,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointermove", SDL3.eventHandlerPointerGeneric);
     }
   },
-  712869: ($0, $1, $2) => {
+  713118: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -9979,7 +10071,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  715022: $0 => {
+  715271: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -9995,7 +10087,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  715852: $0 => {
+  716101: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10010,7 +10102,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerPointerGeneric = undefined;
     }
   },
-  716537: () => {
+  716786: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -10022,7 +10114,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  716746: () => {
+  716995: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -10030,17 +10122,17 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  716999: () => window.innerWidth,
-  717029: () => window.innerHeight,
-  717060: $0 => {
+  717248: () => window.innerWidth,
+  717278: () => window.innerHeight,
+  717309: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  717169: () => {
+  717418: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  717243: () => {
+  717492: () => {
     if (window.matchMedia) {
       if (typeof (Module["SDL3"]) === "undefined") {
         Module["SDL3"] = {};
@@ -10053,14 +10145,14 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  717634: $0 => {
+  717883: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  717674: () => {
+  717923: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  717791: $0 => {
+  718040: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
@@ -10120,6 +10212,10 @@ var _fflush = makeInvalidEarlyAccess("_fflush");
 var _fileno = makeInvalidEarlyAccess("_fileno");
 
 var _SDL_free = Module["_SDL_free"] = makeInvalidEarlyAccess("_SDL_free");
+
+var _clawResizeScreen = Module["_clawResizeScreen"] = makeInvalidEarlyAccess("_clawResizeScreen");
+
+var _clawHideCursor = Module["_clawHideCursor"] = makeInvalidEarlyAccess("_clawHideCursor");
 
 var _main = Module["_main"] = makeInvalidEarlyAccess("_main");
 
@@ -10191,6 +10287,8 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["fflush"] !== "undefined", "missing Wasm export: fflush");
   assert(typeof wasmExports["fileno"] !== "undefined", "missing Wasm export: fileno");
   assert(typeof wasmExports["SDL_free"] !== "undefined", "missing Wasm export: SDL_free");
+  assert(typeof wasmExports["clawResizeScreen"] !== "undefined", "missing Wasm export: clawResizeScreen");
+  assert(typeof wasmExports["clawHideCursor"] !== "undefined", "missing Wasm export: clawHideCursor");
   assert(typeof wasmExports["__main_argc_argv"] !== "undefined", "missing Wasm export: __main_argc_argv");
   assert(typeof wasmExports["SDL_malloc"] !== "undefined", "missing Wasm export: SDL_malloc");
   assert(typeof wasmExports["SDL_calloc"] !== "undefined", "missing Wasm export: SDL_calloc");
@@ -10226,6 +10324,8 @@ function assignWasmExports(wasmExports) {
   _fflush = createExportWrapper("fflush", wasmExports["fflush"], 1);
   _fileno = createExportWrapper("fileno", wasmExports["fileno"], 1);
   _SDL_free = Module["_SDL_free"] = createExportWrapper("SDL_free", wasmExports["SDL_free"], 1);
+  _clawResizeScreen = Module["_clawResizeScreen"] = createExportWrapper("clawResizeScreen", wasmExports["clawResizeScreen"], 2);
+  _clawHideCursor = Module["_clawHideCursor"] = createExportWrapper("clawHideCursor", wasmExports["clawHideCursor"], 0);
   _main = Module["_main"] = createExportWrapper("__main_argc_argv", wasmExports["__main_argc_argv"], 2);
   _SDL_malloc = Module["_SDL_malloc"] = createExportWrapper("SDL_malloc", wasmExports["SDL_malloc"], 1);
   _SDL_calloc = Module["_SDL_calloc"] = createExportWrapper("SDL_calloc", wasmExports["SDL_calloc"], 2);
