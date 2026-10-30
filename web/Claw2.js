@@ -85,14 +85,18 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
   pad.className = "touch-pad";
   const actions = document.createElement("div");
   actions.className = "touch-actions";
+  const gameplayMenu = document.createElement("div");
+  gameplayMenu.className = "touch-menu";
   const buttons = [];
   const gameplayButtons = [];
   const menuButtons = [];
+  const gameplayMenuButtons = [];
   const pointers = new Map;
   const pointerButtons = new Map;
   const menuDirectionHeld = new Map;
   let menuSelectHeld = false;
   let menuBackHeld = false;
+  let gameplayMenuHeld = false;
   const left = 16777216, right = 33554432, up = 67108864, down = 134217728;
   const directionKeys = new Map([ [ up, "ArrowUp" ], [ down, "ArrowDown" ], [ left, "ArrowLeft" ], [ right, "ArrowRight" ] ]);
   function addButton(parent, label, name, mask, group) {
@@ -137,14 +141,17 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
   addButton(actions, "Switch", "Toggle special weapon", 8, gameplayButtons);
   addButton(actions, "Select", "Select menu item", 16, menuButtons);
   addButton(actions, "Back", "Back or cancel", 32, menuButtons);
+  addButton(gameplayMenu, "Menu", "Open in-game menu", 64, gameplayMenuButtons);
   controls.appendChild(pad);
   controls.appendChild(actions);
+  controls.appendChild(gameplayMenu);
   document.body.appendChild(controls);
   function update() {
     const playing = Module.clawGameState === 3 || Module.clawGameState === 4;
     const initialized = Module.clawGameState > 0;
     for (const button of gameplayButtons) button.hidden = !playing;
     for (const button of menuButtons) button.hidden = !initialized || playing;
+    for (const button of gameplayMenuButtons) button.hidden = !playing;
     let held = 0;
     for (const [id, mask] of pointers) {
       const button = pointerButtons.get(id);
@@ -153,6 +160,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
     }
     Module.clawTouchActions = held;
     document.body.classList.toggle("touch-controls-visible", !controls.hidden);
+    Module.clawTouchMode = !controls.hidden;
     document.documentElement.style.cursor = controls.hidden ? "" : "none";
     document.body.style.cursor = controls.hidden ? "" : "none";
     Module.canvas.style.cursor = controls.hidden ? "" : "none";
@@ -193,6 +201,9 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
       if (!menuDirectionHeld.has(event.pointerId)) dispatchMenuKey(key);
       menuDirectionHeld.set(event.pointerId, key);
       pointers.set(event.pointerId, 0);
+    } else if (playing && gameplayMenuButtons.includes(button)) {
+      if (!gameplayMenuHeld) dispatchMenuKey("Escape");
+      gameplayMenuHeld = true;
     } else if (!playing && (button === menuButtons[0] || button === menuButtons[1])) {
       const isSelect = button === menuButtons[0];
       if (!(isSelect ? menuSelectHeld : menuBackHeld)) dispatchMenuKey(isSelect ? "Enter" : "Escape");
@@ -228,6 +239,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
     const button = pointerButtons.get(event.pointerId);
     if (button === menuButtons[0]) menuSelectHeld = false;
     if (button === menuButtons[1]) menuBackHeld = false;
+    if (gameplayMenuButtons.includes(button)) gameplayMenuHeld = false;
     pointers.delete(event.pointerId);
     pointerButtons.delete(event.pointerId);
     update();
@@ -9455,13 +9467,15 @@ var ASM_CONSTS = {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
   697294: () => !!globalThis.clawDiscordActivity,
-  697339: () => {
+  697339: () => Module.clawTouchMode ? 1 : 0,
+  697380: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  697461: () => Module.clawTouchActions || 0,
-  697502: $0 => {
+  697502: () => Module.clawTouchMode ? 1 : 0,
+  697543: () => Module.clawTouchActions || 0,
+  697584: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -9469,10 +9483,10 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  697717: ($0, $1) => {
+  697799: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  697774: () => {
+  697856: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9481,7 +9495,7 @@ var ASM_CONSTS = {
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  698020: ($0, $1, $2, $3, $4) => {
+  698102: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -9490,14 +9504,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  698212: $0 => {
+  698294: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  698343: () => {
+  698425: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -9505,7 +9519,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  698490: () => {
+  698572: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     } else if (typeof (navigator.webkitGetUserMedia) !== "undefined") {
@@ -9513,7 +9527,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  698724: $0 => {
+  698806: $0 => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9537,8 +9551,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  699287: () => Module["SDL3"].audioContext.sampleRate,
-  699338: ($0, $1, $2, $3) => {
+  699369: () => Module["SDL3"].audioContext.sampleRate,
+  699420: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9580,7 +9594,7 @@ var ASM_CONSTS = {
       }, have_microphone, no_microphone);
     }
   },
-  701179: ($0, $1, $2, $3) => {
+  701261: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var playback = SDL3.audio_playback;
     playback.callbackGeneration = (playback.callbackGeneration || 0) + 1;
@@ -9620,7 +9634,7 @@ var ASM_CONSTS = {
       playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  702714: $0 => {
+  702796: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9655,7 +9669,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  703943: ($0, $1) => {
+  704025: ($0, $1) => {
     var buf = $0 >>> 2;
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -9669,7 +9683,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  704456: ($0, $1) => {
+  704538: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -9688,14 +9702,14 @@ var ASM_CONSTS = {
       }
     }
   },
-  705083: () => {
+  705165: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
     Module["SDL3"].camera = {};
   },
-  705184: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  705243: ($0, $1, $2, $3, $4, $5, $6) => {
+  705266: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  705325: ($0, $1, $2, $3, $4, $5, $6) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -9769,7 +9783,7 @@ var ASM_CONSTS = {
       dynCall("iiiiii", outcome, [ device, 0, 0, 0, 0 ]);
     });
   },
-  707534: () => {
+  707616: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -9777,7 +9791,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  707785: ($0, $1, $2) => {
+  707867: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -9790,12 +9804,12 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  708163: () => {
+  708245: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  708250: $0 => {
+  708332: $0 => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9806,7 +9820,7 @@ var ASM_CONSTS = {
     }
     return 1;
   },
-  708425: ($0, $1, $2) => {
+  708507: ($0, $1, $2) => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9823,7 +9837,7 @@ var ASM_CONSTS = {
     });
     return 1;
   },
-  708761: ($0, $1) => {
+  708843: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -9857,7 +9871,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  709469: ($0, $1, $2, $3) => {
+  709551: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -9916,7 +9930,7 @@ var ASM_CONSTS = {
     }
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
   },
-  710698: ($0, $1, $2, $3, $4) => {
+  710780: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -9937,17 +9951,17 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  711356: $0 => {
+  711438: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  711439: () => {
+  711521: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  711508: ($0, $1, $2) => {
+  711590: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10007,7 +10021,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointermove", SDL3.eventHandlerPointerGeneric);
     }
   },
-  713301: ($0, $1, $2) => {
+  713383: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10075,7 +10089,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  715454: $0 => {
+  715536: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10091,7 +10105,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  716284: $0 => {
+  716366: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10106,7 +10120,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerPointerGeneric = undefined;
     }
   },
-  716969: () => {
+  717051: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -10118,7 +10132,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  717178: () => {
+  717260: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -10126,17 +10140,17 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  717431: () => window.innerWidth,
-  717461: () => window.innerHeight,
-  717492: $0 => {
+  717513: () => window.innerWidth,
+  717543: () => window.innerHeight,
+  717574: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  717601: () => {
+  717683: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  717675: () => {
+  717757: () => {
     if (window.matchMedia) {
       if (typeof (Module["SDL3"]) === "undefined") {
         Module["SDL3"] = {};
@@ -10149,14 +10163,14 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  718066: $0 => {
+  718148: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  718106: () => {
+  718188: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  718223: $0 => {
+  718305: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
