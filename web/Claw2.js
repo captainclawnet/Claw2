@@ -9401,39 +9401,37 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  695913: () => Module.clawViewport.width,
-  695951: () => Module.clawViewport.height,
-  695990: () => {
+  695913: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  696112: () => {
+  696035: () => {
     Module.clawHideCursor = function() {
       _clawHideCursor();
     };
   },
-  696175: $0 => {
+  696098: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  696241: () => {
+  696164: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  696304: () => {
+  696227: () => {
     Module.setStatus("Gra została zatrzymana. Odśwież stronę, aby uruchomić ją ponownie.");
   },
-  696402: $0 => {
+  696325: $0 => {
     Module.setStatus("Błąd renderowania: " + UTF8ToString($0));
   },
-  696468: () => {
+  696391: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  696529: () => {
+  696452: () => {
     Module.clawTextShader = null;
   },
-  696563: () => {
+  696486: () => {
     Module.clawTextUniforms = {};
   },
-  696597: ($0, $1, $2, $3) => {
+  696520: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -9443,39 +9441,39 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  696750: ($0, $1, $2, $3, $4) => {
+  696673: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  696815: ($0, $1) => {
+  696738: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  696869: ($0, $1, $2) => {
+  696792: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  696928: $0 => {
+  696851: $0 => {
     Module.clawRequestLevel($0);
   },
-  696961: $0 => Module.clawLevels[$0].status,
-  697002: $0 => Module.clawLevels[$0].progress,
-  697045: $0 => Module.clawLevels[$0].status,
-  697086: $0 => {
+  696884: $0 => Module.clawLevels[$0].status,
+  696925: $0 => Module.clawLevels[$0].progress,
+  696968: $0 => Module.clawLevels[$0].status,
+  697009: $0 => {
     delete Module.clawLevels[$0];
   },
-  697120: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  697183: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  697246: $0 => {
+  697043: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  697106: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  697169: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  697294: () => !!globalThis.clawDiscordActivity,
-  697339: () => Module.clawTouchMode ? 1 : 0,
-  697380: () => {
+  697217: () => !!globalThis.clawDiscordActivity,
+  697262: () => Module.clawTouchMode ? 1 : 0,
+  697303: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  697502: () => Module.clawTouchMode ? 1 : 0,
-  697543: () => Module.clawTouchActions || 0,
-  697584: $0 => {
+  697425: () => Module.clawTouchMode ? 1 : 0,
+  697466: () => Module.clawTouchActions || 0,
+  697507: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -9483,10 +9481,10 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  697799: ($0, $1) => {
+  697722: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  697856: () => {
+  697779: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9495,7 +9493,7 @@ var ASM_CONSTS = {
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  698102: ($0, $1, $2, $3, $4) => {
+  698025: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -9504,14 +9502,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  698294: $0 => {
+  698217: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  698425: () => {
+  698348: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -9519,7 +9517,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  698572: () => {
+  698495: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     } else if (typeof (navigator.webkitGetUserMedia) !== "undefined") {
@@ -9527,7 +9525,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  698806: $0 => {
+  698729: $0 => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9551,8 +9549,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  699369: () => Module["SDL3"].audioContext.sampleRate,
-  699420: ($0, $1, $2, $3) => {
+  699292: () => Module["SDL3"].audioContext.sampleRate,
+  699343: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9594,7 +9592,7 @@ var ASM_CONSTS = {
       }, have_microphone, no_microphone);
     }
   },
-  701261: ($0, $1, $2, $3) => {
+  701184: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var playback = SDL3.audio_playback;
     playback.callbackGeneration = (playback.callbackGeneration || 0) + 1;
@@ -9634,7 +9632,7 @@ var ASM_CONSTS = {
       playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  702796: $0 => {
+  702719: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9669,7 +9667,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  704025: ($0, $1) => {
+  703948: ($0, $1) => {
     var buf = $0 >>> 2;
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -9683,7 +9681,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  704538: ($0, $1) => {
+  704461: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -9702,14 +9700,14 @@ var ASM_CONSTS = {
       }
     }
   },
-  705165: () => {
+  705088: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
     Module["SDL3"].camera = {};
   },
-  705266: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  705325: ($0, $1, $2, $3, $4, $5, $6) => {
+  705189: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  705248: ($0, $1, $2, $3, $4, $5, $6) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -9783,7 +9781,7 @@ var ASM_CONSTS = {
       dynCall("iiiiii", outcome, [ device, 0, 0, 0, 0 ]);
     });
   },
-  707616: () => {
+  707539: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -9791,7 +9789,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  707867: ($0, $1, $2) => {
+  707790: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -9804,12 +9802,12 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  708245: () => {
+  708168: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  708332: $0 => {
+  708255: $0 => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9820,7 +9818,7 @@ var ASM_CONSTS = {
     }
     return 1;
   },
-  708507: ($0, $1, $2) => {
+  708430: ($0, $1, $2) => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9837,7 +9835,7 @@ var ASM_CONSTS = {
     });
     return 1;
   },
-  708843: ($0, $1) => {
+  708766: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -9871,7 +9869,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  709551: ($0, $1, $2, $3) => {
+  709474: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -9930,7 +9928,7 @@ var ASM_CONSTS = {
     }
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
   },
-  710780: ($0, $1, $2, $3, $4) => {
+  710703: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -9951,17 +9949,17 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  711438: $0 => {
+  711361: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  711521: () => {
+  711444: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  711590: ($0, $1, $2) => {
+  711513: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10021,7 +10019,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointermove", SDL3.eventHandlerPointerGeneric);
     }
   },
-  713383: ($0, $1, $2) => {
+  713306: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10089,7 +10087,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  715536: $0 => {
+  715459: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10105,7 +10103,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  716366: $0 => {
+  716289: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10120,7 +10118,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerPointerGeneric = undefined;
     }
   },
-  717051: () => {
+  716974: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -10132,7 +10130,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  717260: () => {
+  717183: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -10140,17 +10138,17 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  717513: () => window.innerWidth,
-  717543: () => window.innerHeight,
-  717574: $0 => {
+  717436: () => window.innerWidth,
+  717466: () => window.innerHeight,
+  717497: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  717683: () => {
+  717606: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  717757: () => {
+  717680: () => {
     if (window.matchMedia) {
       if (typeof (Module["SDL3"]) === "undefined") {
         Module["SDL3"] = {};
@@ -10163,14 +10161,14 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  718148: $0 => {
+  718071: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  718188: () => {
+  718111: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  718305: $0 => {
+  718228: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;

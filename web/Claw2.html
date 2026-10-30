@@ -10,7 +10,7 @@ body.touch-controls-visible,#canvas.touch-controls-visible{cursor:none!important
 canvas{display:block;width:100%;height:100%;outline:none;background:#000}
 #canvas,#loading{position:absolute;width:var(--game-width,100vw);height:var(--game-height,100dvh);left:50%;top:50%;transform:translate(-50%,-50%)}
 #loading{object-fit:fill;background:transparent;pointer-events:none}
-@media (orientation:portrait) and (pointer:coarse){#game{width:100dvh;height:100vw;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}#canvas,#loading{width:100%;height:100%;left:50%;top:50%}}
+@media (orientation:portrait) and (pointer:coarse){#game{position:fixed;inset:0;width:100vw;height:100dvh;display:block;transform:none}#canvas,#loading{width:100dvh;height:100vw;left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}}
 #loading[hidden]{display:none}
 #touch-controls[hidden]{display:none}
 #touch-controls{position:fixed;inset:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none}
@@ -26,8 +26,8 @@ canvas{display:block;width:100%;height:100%;outline:none;background:#000}
 @media (orientation:portrait) and (pointer:coarse){.touch-pad,.touch-actions,.touch-menu{position:fixed;transform:none}.touch-pad,.touch-actions{bottom:max(16px,env(safe-area-inset-bottom));top:auto}.touch-menu{top:max(16px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left))}.touch-pad{left:max(16px,env(safe-area-inset-left))}.touch-actions{right:max(16px,env(safe-area-inset-right))}}
 </style>
 <div id="game">
-<canvas id="canvas" width="960" height="540" tabindex="0" aria-label="Claw 2" oncontextmenu="event.preventDefault()"></canvas>
-<canvas id="loading" width="960" height="540" role="status" aria-live="polite"></canvas>
+<canvas id="canvas" tabindex="0" aria-label="Claw 2" oncontextmenu="event.preventDefault()"></canvas>
+<canvas id="loading" role="status" aria-live="polite"></canvas>
 </div>
 <script src="claw-config.js"></script>
 <script>
@@ -35,16 +35,23 @@ function clawMeasureViewport() {
     let width = Math.max(320, Math.floor(innerWidth));
     let height = Math.max(180, Math.floor(innerHeight));
     if (height > width) [width, height] = [height, width];
-    const scale = Math.min(width / 16, height / 9);
-    return {width: Math.floor(scale * 16), height: Math.floor(scale * 9)};
+    const gameWidth = globalThis.CLAW_SCREEN_WIDTH;
+    const gameHeight = globalThis.CLAW_SCREEN_HEIGHT;
+    const scale = Math.min(width / gameWidth, height / gameHeight);
+    return {width: Math.floor(scale * gameWidth), height: Math.floor(scale * gameHeight)};
 }
 const initialGameSize = clawMeasureViewport();
 document.documentElement.style.setProperty('--game-width', initialGameSize.width + 'px');
 document.documentElement.style.setProperty('--game-height', initialGameSize.height + 'px');
+for (const id of ['canvas', 'loading']) {
+    document.getElementById(id).width = globalThis.CLAW_SCREEN_WIDTH;
+    document.getElementById(id).height = globalThis.CLAW_SCREEN_HEIGHT;
+}
 var Module = {
     clawAssetBaseURL: globalThis.CLAW_ASSET_BASE_URL || '/assets/',
     canvas: document.getElementById('canvas'),
-    clawViewport: initialGameSize,
+    clawViewport: {width: globalThis.CLAW_SCREEN_WIDTH, height: globalThis.CLAW_SCREEN_HEIGHT},
+    clawResolution: {width: globalThis.CLAW_SCREEN_WIDTH, height: globalThis.CLAW_SCREEN_HEIGHT},
     setStatus: function (text) {
         // Emscripten clears its loading status after onRuntimeInitialized.
         // Keep the application status until the game explicitly replaces it.
@@ -85,13 +92,13 @@ var Module = {
         if (lines.length > visible.length) visible[visible.length - 1] += '…';
         const percent = text.match(/(\d+(?:\.\d+)?)%/);
         const center = running ? viewport.height * 0.89 : viewport.height / 2;
-        const lineHeight = 32 * (viewport.width / 960);
+        const lineHeight = 32 * (viewport.width / Module.clawResolution.width);
         const firstLineY = center - ((visible.length - 1) * lineHeight) / 2;
         if (percent && !running) {
-            const barWidth = Math.min(420 * (viewport.width / 960), viewport.width * 0.72);
-            const barHeight = Math.max(3, 4 * (viewport.width / 960));
+            const barWidth = Math.min(420 * (viewport.width / Module.clawResolution.width), viewport.width * 0.72);
+            const barHeight = Math.max(3, 4 * (viewport.width / Module.clawResolution.width));
             const barX = (viewport.width - barWidth) / 2;
-            const barY = firstLineY + Math.max(12 * (viewport.width / 960), lineHeight * 0.42);
+            const barY = firstLineY + Math.max(12 * (viewport.width / Module.clawResolution.width), lineHeight * 0.42);
             ctx.fillStyle = '#302819';
             ctx.fillRect(barX, barY, barWidth, barHeight);
             ctx.fillStyle = '#eeb94e';
