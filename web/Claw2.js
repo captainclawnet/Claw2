@@ -149,6 +149,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
   function update() {
     const playing = Module.clawGameState === 3 || Module.clawGameState === 4;
     const initialized = Module.clawGameState > 0;
+    pad.hidden = Module.clawGameState === 2;
     for (const button of gameplayButtons) button.hidden = !playing;
     for (const button of menuButtons) button.hidden = !initialized || playing;
     for (const button of gameplayMenuButtons) button.hidden = !playing;
@@ -9409,29 +9410,34 @@ var ASM_CONSTS = {
       _clawHideCursor();
     };
   },
-  696098: $0 => {
+  696098: () => {
+    Module.clawRedrawScreen = function() {
+      _clawRedrawScreen();
+    };
+  },
+  696165: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  696164: () => {
+  696231: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  696227: () => {
+  696294: () => {
     Module.setStatus("Gra została zatrzymana. Odśwież stronę, aby uruchomić ją ponownie.");
   },
-  696325: $0 => {
+  696392: $0 => {
     Module.setStatus("Błąd renderowania: " + UTF8ToString($0));
   },
-  696391: () => {
+  696458: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  696452: () => {
+  696519: () => {
     Module.clawTextShader = null;
   },
-  696486: () => {
+  696553: () => {
     Module.clawTextUniforms = {};
   },
-  696520: ($0, $1, $2, $3) => {
+  696587: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -9441,39 +9447,39 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  696673: ($0, $1, $2, $3, $4) => {
+  696740: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  696738: ($0, $1) => {
+  696805: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  696792: ($0, $1, $2) => {
+  696859: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  696851: $0 => {
+  696918: $0 => {
     Module.clawRequestLevel($0);
   },
-  696884: $0 => Module.clawLevels[$0].status,
-  696925: $0 => Module.clawLevels[$0].progress,
-  696968: $0 => Module.clawLevels[$0].status,
-  697009: $0 => {
+  696951: $0 => Module.clawLevels[$0].status,
+  696992: $0 => Module.clawLevels[$0].progress,
+  697035: $0 => Module.clawLevels[$0].status,
+  697076: $0 => {
     delete Module.clawLevels[$0];
   },
-  697043: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  697106: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  697169: $0 => {
+  697110: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  697173: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  697236: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  697217: () => !!globalThis.clawDiscordActivity,
-  697262: () => Module.clawTouchMode ? 1 : 0,
-  697303: () => {
+  697284: () => !!globalThis.clawDiscordActivity,
+  697329: () => Module.clawTouchMode ? 1 : 0,
+  697370: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  697425: () => Module.clawTouchMode ? 1 : 0,
-  697466: () => Module.clawTouchActions || 0,
-  697507: $0 => {
+  697492: () => Module.clawTouchMode ? 1 : 0,
+  697533: () => Module.clawTouchActions || 0,
+  697574: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -9481,10 +9487,10 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  697722: ($0, $1) => {
+  697789: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  697779: () => {
+  697846: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9493,7 +9499,7 @@ var ASM_CONSTS = {
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  698025: ($0, $1, $2, $3, $4) => {
+  698092: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -9502,14 +9508,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  698217: $0 => {
+  698284: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  698348: () => {
+  698415: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -9517,7 +9523,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  698495: () => {
+  698562: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     } else if (typeof (navigator.webkitGetUserMedia) !== "undefined") {
@@ -9525,7 +9531,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  698729: $0 => {
+  698796: $0 => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9549,8 +9555,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  699292: () => Module["SDL3"].audioContext.sampleRate,
-  699343: ($0, $1, $2, $3) => {
+  699359: () => Module["SDL3"].audioContext.sampleRate,
+  699410: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9592,7 +9598,7 @@ var ASM_CONSTS = {
       }, have_microphone, no_microphone);
     }
   },
-  701184: ($0, $1, $2, $3) => {
+  701251: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var playback = SDL3.audio_playback;
     playback.callbackGeneration = (playback.callbackGeneration || 0) + 1;
@@ -9632,7 +9638,7 @@ var ASM_CONSTS = {
       playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  702719: $0 => {
+  702786: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9667,7 +9673,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  703948: ($0, $1) => {
+  704015: ($0, $1) => {
     var buf = $0 >>> 2;
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -9681,7 +9687,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  704461: ($0, $1) => {
+  704528: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -9700,14 +9706,14 @@ var ASM_CONSTS = {
       }
     }
   },
-  705088: () => {
+  705155: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
     Module["SDL3"].camera = {};
   },
-  705189: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  705248: ($0, $1, $2, $3, $4, $5, $6) => {
+  705256: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  705315: ($0, $1, $2, $3, $4, $5, $6) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -9781,7 +9787,7 @@ var ASM_CONSTS = {
       dynCall("iiiiii", outcome, [ device, 0, 0, 0, 0 ]);
     });
   },
-  707539: () => {
+  707606: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -9789,7 +9795,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  707790: ($0, $1, $2) => {
+  707857: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -9802,12 +9808,12 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  708168: () => {
+  708235: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  708255: $0 => {
+  708322: $0 => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9818,7 +9824,7 @@ var ASM_CONSTS = {
     }
     return 1;
   },
-  708430: ($0, $1, $2) => {
+  708497: ($0, $1, $2) => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9835,7 +9841,7 @@ var ASM_CONSTS = {
     });
     return 1;
   },
-  708766: ($0, $1) => {
+  708833: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -9869,7 +9875,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  709474: ($0, $1, $2, $3) => {
+  709541: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -9928,7 +9934,7 @@ var ASM_CONSTS = {
     }
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
   },
-  710703: ($0, $1, $2, $3, $4) => {
+  710770: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -9949,17 +9955,17 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  711361: $0 => {
+  711428: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  711444: () => {
+  711511: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  711513: ($0, $1, $2) => {
+  711580: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10019,7 +10025,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointermove", SDL3.eventHandlerPointerGeneric);
     }
   },
-  713306: ($0, $1, $2) => {
+  713373: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10087,7 +10093,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  715459: $0 => {
+  715526: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10103,7 +10109,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  716289: $0 => {
+  716356: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10118,7 +10124,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerPointerGeneric = undefined;
     }
   },
-  716974: () => {
+  717041: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -10130,7 +10136,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  717183: () => {
+  717250: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -10138,17 +10144,17 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  717436: () => window.innerWidth,
-  717466: () => window.innerHeight,
-  717497: $0 => {
+  717503: () => window.innerWidth,
+  717533: () => window.innerHeight,
+  717564: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  717606: () => {
+  717673: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  717680: () => {
+  717747: () => {
     if (window.matchMedia) {
       if (typeof (Module["SDL3"]) === "undefined") {
         Module["SDL3"] = {};
@@ -10161,14 +10167,14 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  718071: $0 => {
+  718138: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  718111: () => {
+  718178: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  718228: $0 => {
+  718295: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
@@ -10230,6 +10236,8 @@ var _fileno = makeInvalidEarlyAccess("_fileno");
 var _SDL_free = Module["_SDL_free"] = makeInvalidEarlyAccess("_SDL_free");
 
 var _clawHideCursor = Module["_clawHideCursor"] = makeInvalidEarlyAccess("_clawHideCursor");
+
+var _clawRedrawScreen = Module["_clawRedrawScreen"] = makeInvalidEarlyAccess("_clawRedrawScreen");
 
 var _main = Module["_main"] = makeInvalidEarlyAccess("_main");
 
@@ -10302,6 +10310,7 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["fileno"] !== "undefined", "missing Wasm export: fileno");
   assert(typeof wasmExports["SDL_free"] !== "undefined", "missing Wasm export: SDL_free");
   assert(typeof wasmExports["clawHideCursor"] !== "undefined", "missing Wasm export: clawHideCursor");
+  assert(typeof wasmExports["clawRedrawScreen"] !== "undefined", "missing Wasm export: clawRedrawScreen");
   assert(typeof wasmExports["__main_argc_argv"] !== "undefined", "missing Wasm export: __main_argc_argv");
   assert(typeof wasmExports["SDL_malloc"] !== "undefined", "missing Wasm export: SDL_malloc");
   assert(typeof wasmExports["SDL_calloc"] !== "undefined", "missing Wasm export: SDL_calloc");
@@ -10338,6 +10347,7 @@ function assignWasmExports(wasmExports) {
   _fileno = createExportWrapper("fileno", wasmExports["fileno"], 1);
   _SDL_free = Module["_SDL_free"] = createExportWrapper("SDL_free", wasmExports["SDL_free"], 1);
   _clawHideCursor = Module["_clawHideCursor"] = createExportWrapper("clawHideCursor", wasmExports["clawHideCursor"], 0);
+  _clawRedrawScreen = Module["_clawRedrawScreen"] = createExportWrapper("clawRedrawScreen", wasmExports["clawRedrawScreen"], 0);
   _main = Module["_main"] = createExportWrapper("__main_argc_argv", wasmExports["__main_argc_argv"], 2);
   _SDL_malloc = Module["_SDL_malloc"] = createExportWrapper("SDL_malloc", wasmExports["SDL_malloc"], 1);
   _SDL_calloc = Module["_SDL_calloc"] = createExportWrapper("SDL_calloc", wasmExports["SDL_calloc"], 2);

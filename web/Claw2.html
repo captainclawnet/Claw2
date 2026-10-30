@@ -10,7 +10,7 @@ body.touch-controls-visible,#canvas.touch-controls-visible{cursor:none!important
 canvas{display:block;width:100%;height:100%;outline:none;background:#000}
 #canvas,#loading{position:absolute;width:var(--game-width,100vw);height:var(--game-height,100dvh);left:50%;top:50%;transform:translate(-50%,-50%)}
 #loading{object-fit:fill;background:transparent;pointer-events:none}
-@media (orientation:portrait) and (pointer:coarse){#game{position:fixed;inset:0;width:100vw;height:100dvh;display:block;transform:none}#canvas,#loading{width:100dvh;height:100vw;left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}}
+@media (orientation:portrait) and (pointer:coarse){#game{position:fixed;inset:0;width:100vw;height:100dvh;display:block;transform:none}#canvas,#loading{width:var(--game-width);height:var(--game-height);left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}}
 #loading[hidden]{display:none}
 #touch-controls[hidden]{display:none}
 #touch-controls{position:fixed;inset:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none}
@@ -23,7 +23,7 @@ canvas{display:block;width:100%;height:100%;outline:none;background:#000}
 #touch-controls .touch-actions button{width:clamp(54px,12vw,80px);height:clamp(54px,12vw,80px);border-radius:50%;font-size:12px}
 #touch-controls button.active{background:#d09535dd;border-color:#ffe1a3}
 .touch-pad span{pointer-events:none}
-@media (orientation:portrait) and (pointer:coarse){.touch-pad,.touch-actions,.touch-menu{position:fixed;transform:none}.touch-pad,.touch-actions{bottom:max(16px,env(safe-area-inset-bottom));top:auto}.touch-menu{top:max(16px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left))}.touch-pad{left:max(16px,env(safe-area-inset-left))}.touch-actions{right:max(16px,env(safe-area-inset-right))}}
+@media (orientation:portrait) and (pointer:coarse){#touch-controls{inset:auto;width:100dvh;height:100vw;left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}.touch-pad,.touch-actions,.touch-menu{position:absolute}.touch-pad,.touch-actions{bottom:max(16px,env(safe-area-inset-bottom));top:auto}.touch-menu{top:max(16px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left))}.touch-pad{left:max(16px,env(safe-area-inset-left))}.touch-actions{right:max(16px,env(safe-area-inset-right))}}
 </style>
 <div id="game">
 <canvas id="canvas" tabindex="0" aria-label="Claw 2" oncontextmenu="event.preventDefault()"></canvas>
@@ -158,8 +158,12 @@ window.addEventListener('resize', function () {
         document.documentElement.style.setProperty('--game-height', size.height + 'px');
         // Preserve SDL's backing resolution; CSS scales the rendered frame
         // without desynchronizing the renderer's internal targets.
+        requestAnimationFrame(function () {
+            if (Module.clawRedrawScreen) Module.clawRedrawScreen();
+        });
     }, 400);
 });
+window.addEventListener('orientationchange', function () { window.dispatchEvent(new Event('resize')); });
 Module.canvas.addEventListener('click', () => Module.clawStart());
 Module.canvas.addEventListener('keydown', event => {
     if (Module.clawPhase === 'ready' && (event.key === 'Enter' || event.key === ' ')) {
