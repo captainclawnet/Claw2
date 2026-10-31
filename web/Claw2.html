@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pl">
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#10151d">
@@ -9,12 +9,12 @@
 <style>
 html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#10151d;color:#eee;font:16px system-ui;text-align:center}
 body.touch-controls-visible,#canvas.touch-controls-visible{cursor:none!important}
-#game{position:relative;margin:auto;width:100vw;height:100dvh;display:grid;place-items:center}
-canvas{display:block;width:100%;height:100%;outline:none;background:#000}
-#canvas,#loading{position:absolute;width:var(--game-width,100vw);height:var(--game-height,100dvh);left:50%;top:50%;transform:translate(-50%,-50%)}
-#loading{object-fit:fill;background:transparent;pointer-events:none}
+#game{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden}
+canvas{display:block;outline:none;background:#000;object-fit:contain;object-position:center}
+#canvas,#loading{position:absolute;inset:0;width:100%;height:100%;transform:none}
+#loading{pointer-events:none;background:transparent}
 html.claw-rotated #game{position:fixed;inset:0;width:100vw;height:100dvh;display:block;transform:none}
-html.claw-rotated #canvas,html.claw-rotated #loading{width:var(--game-width);height:var(--game-height);left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}
+html.claw-rotated #canvas,html.claw-rotated #loading{inset:auto;width:100dvh;height:100vw;left:50%;top:50%;transform:translate(-50%,-50%) rotate(90deg)}
 #loading[hidden]{display:none}
 #touch-controls[hidden]{display:none}
 #touch-controls{position:fixed;inset:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none}
@@ -50,17 +50,10 @@ if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
 // Keep startup working if an older cached deployment config has only the asset URL.
 const clawScreenWidth = 640;
 const clawScreenHeight = 480;
-function clawMeasureViewport() {
+function clawUpdateOrientationClass() {
     document.documentElement.classList.toggle('claw-rotated', innerHeight > innerWidth);
-    let width = Math.max(320, Math.floor(innerWidth));
-    let height = Math.max(180, Math.floor(innerHeight));
-    if (height > width) [width, height] = [height, width];
-    const scale = Math.min(width / clawScreenWidth, height / clawScreenHeight);
-    return {width: Math.floor(scale * clawScreenWidth), height: Math.floor(scale * clawScreenHeight)};
 }
-const initialGameSize = clawMeasureViewport();
-document.documentElement.style.setProperty('--game-width', initialGameSize.width + 'px');
-document.documentElement.style.setProperty('--game-height', initialGameSize.height + 'px');
+clawUpdateOrientationClass();
 for (const id of ['canvas', 'loading']) {
     document.getElementById(id).width = clawScreenWidth;
     document.getElementById(id).height = clawScreenHeight;
@@ -128,27 +121,27 @@ var Module = {
     noInitialRun: true,
     onRuntimeInitialized: function () {
         Module.clawPhase = 'ready';
-        Module.setStatus('Gotowe. Kliknij, aby uruchomić.');
+        Module.setStatus('Ready. Click to start.');
     },
     clawStart: function () {
             if (Module.clawPhase !== 'ready') return;
             Module.clawPhase = 'starting';
             Module.canvas.focus();
-            Module.setStatus('Uruchamianie gry…');
+            Module.setStatus('Starting game…');
             try {
                 const args = Module.clawComparisonArguments ? Module.clawComparisonArguments() : [];
                 let code;
                 try { code = Module.callMain(args); }
                 finally { if (Module.clawComparisonClearToken) Module.clawComparisonClearToken(); }
                 if (code && Module.clawPhase !== 'failed')
-                    Module.clawFail('Gra zakończyła uruchamianie z kodem ' + code);
+                    Module.clawFail('Game startup ended with exit code ' + code);
             } catch (error) {
                 Module.clawFail(error.stack || String(error));
             }
     },
     clawFail: function (error) {
         Module.clawPhase = 'failed';
-        Module.setStatus('Błąd gry: ' + error);
+        Module.setStatus('Game error: ' + error);
         console.error(error);
     },
     clawStarted: function () {
@@ -168,7 +161,7 @@ var Module = {
         if (Module.clawPhase === 'starting') {
             // Keep the first specific failure, not a later cleanup message.
             if (!Module.clawStartupError && text.includes('[error]')) Module.clawStartupError = text;
-            Module.setStatus('Uruchamianie gry: ' + text);
+            Module.setStatus('Starting game: ' + text);
         }
     },
     onAbort: function (error) { Module.clawFail(error); }
@@ -176,11 +169,7 @@ var Module = {
 window.addEventListener('resize', function () {
     clearTimeout(Module.clawResizeTimer);
     Module.clawResizeTimer = setTimeout(function () {
-        const size = clawMeasureViewport();
-        document.documentElement.style.setProperty('--game-width', size.width + 'px');
-        document.documentElement.style.setProperty('--game-height', size.height + 'px');
-        // Preserve SDL's backing resolution; CSS scales the rendered frame
-        // without desynchronizing the renderer's internal targets.
+        clawUpdateOrientationClass();
         requestAnimationFrame(function () {
             if (Module.clawRedrawScreen) Module.clawRedrawScreen();
         });
@@ -202,7 +191,7 @@ Module.canvas.addEventListener('keydown', event => {
         Module.clawStart();
     }
 });
-Module.setStatus('Pobieranie gry…');
+Module.setStatus('Loading game…');
 window.addEventListener('error', event => Module.clawFail(event.error?.stack || event.message));
 window.addEventListener('unhandledrejection', event => Module.clawFail(event.reason));
 console.info('Claw Web', {browser:navigator.userAgent, language:navigator.language,
