@@ -17,6 +17,8 @@ from urllib.request import Request, urlopen
 
 PACKS = ('BaseAssets', 'BR', 'DE', 'EN', 'ES', 'JP', 'PL', 'RU')
 MAX_FILE = 256 * 1024 * 1024
+PWA_FILES = ('manifest.webmanifest', 'service-worker.js',
+             'icons/claw-192.png', 'icons/claw-512.png')
 
 
 def sha(data):
@@ -80,11 +82,14 @@ def build_site(web, output, token=None, check_url=None, fetch=download):
     # Explicit allowlist prevents stale .data bundles, credentials or local files
     # from entering the published site.
     web_files = {name: (web / name).read_bytes() for name in ('Claw2.html', 'Claw2.js', 'Claw2.wasm')}
+    pwa_files = {name: (web / name).read_bytes() for name in PWA_FILES}
     if b'claw-config.js' not in web_files['Claw2.html']:
         raise ValueError('Rebuild the web target: deployment configuration hook is missing')
     if b'Claw2.data' in web_files['Claw2.js']:
         raise ValueError('Rebuild without embedded assets before publishing')
-    index = {'schema': 1, 'web': {name: sha(data) for name, data in web_files.items()}, 'packs': {}}
+    index = {'schema': 1,
+             'web': {name: sha(data) for name, data in {**web_files, **pwa_files}.items()},
+             'packs': {}}
     releases = []
     for pack in PACKS:
         release = json.loads(fetch(f'https://api.github.com/repos/captainclawnet/{pack}/releases/latest', 2*1024*1024, token))
@@ -122,6 +127,10 @@ def build_site(web, output, token=None, check_url=None, fetch=download):
     (output / 'Claw2.html').write_bytes((output / 'index.html').read_bytes())
     (output / '.nojekyll').write_text('')
     (output / 'claw-config.js').write_text("globalThis.CLAW_ASSET_BASE_URL = new URL('assets/', document.baseURI).href;\n")
+    for name, data in pwa_files.items():
+        path = output / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
     for pack, base, raw, manifest in releases:
         folder = output / 'assets' / pack / manifest['tag']
         folder.mkdir(parents=True)

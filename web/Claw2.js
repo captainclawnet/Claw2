@@ -129,50 +129,241 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
   spacer.style.gridColumn = "2";
   spacer.style.gridRow = "2";
   spacer.style.width = "clamp(36px,9vw,60px)";
-  pad.style.gridTemplateAreas = '". up ." "left . right" ". down ."';
-  upButton.style.gridArea = "up";
-  leftButton.style.gridArea = "left";
-  rightButton.style.gridArea = "right";
-  downButton.style.gridArea = "down";
-  spacer.style.gridArea = "center";
+  // Use numeric grid lines only; gridArea resets gridRow/gridColumn.
+  pad.style.gridTemplateAreas = "none";
   addButton(actions, "Special", "Special attack (fire weapon)", 4, gameplayButtons);
   addButton(actions, "Attack", "Attack", 2, gameplayButtons);
   addButton(actions, "Jump", "Jump", 1, gameplayButtons);
   addButton(actions, "Switch", "Toggle special weapon", 8, gameplayButtons);
   addButton(actions, "Select", "Select menu item", 16, menuButtons);
   addButton(actions, "Back", "Back or cancel", 32, menuButtons);
-  addButton(gameplayMenu, "Menu", "Open in-game menu", 64, gameplayMenuButtons);
+  addButton(gameplayMenu, "☰", "Open in-game menu", 64, gameplayMenuButtons);
   controls.appendChild(pad);
   controls.appendChild(actions);
   controls.appendChild(gameplayMenu);
   document.body.appendChild(controls);
+  let firstInput = true, enabled = false, editing = false;
+  let config = {
+    enabled: null,
+    style: "4",
+    size: 1,
+    actions: [ 4, 2, 1, 8 ],
+    positions: {}
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem("claw-touch-layout"));
+    if (saved && [ "4", "8", "stick" ].includes(saved.style) && Array.isArray(saved.actions)) config = {
+      enabled: typeof saved.enabled === "boolean" ? saved.enabled : null,
+      style: saved.style,
+      size: [ .75, 1, 1.25 ].includes(saved.size) ? saved.size : 1,
+      actions: saved.actions,
+      positions: saved.positions || {}
+    };
+  } catch (_) {}
+  function save() {
+    try {
+      localStorage.setItem("claw-touch-layout", JSON.stringify(config));
+    } catch (_) {}
+  }
+  const diagonals = [];
+  for (const [label, name, mask, column, row] of [ [ "↖", "Up left", up | left, 1, 1 ], [ "↗", "Up right", up | right, 3, 1 ], [ "↙", "Down left", down | left, 1, 3 ], [ "↘", "Down right", down | right, 3, 3 ] ]) {
+    const button = addButton(pad, label, name, mask, diagonals);
+    button.style.gridColumn = String(column);
+    button.style.gridRow = String(row);
+  }
+  for (const [label, mask] of [ [ "Lift / throw", 32 ], [ "Pistol", 64 ], [ "Magic", 128 ], [ "Dynamite", 256 ], [ "Special ability", 512 ] ]) addButton(actions, label, label, mask, gameplayButtons);
+  const stick = addButton(controls, "+", "Movement stick", 0);
+  stick.className = "touch-stick";
+  const keyboard = addButton(controls, "⌨", "Open keyboard", 0);
+  keyboard.className = "touch-keyboard";
+  const textInput = document.createElement("textarea");
+  textInput.className = "touch-text-input";
+  textInput.setAttribute("aria-label", "Game keyboard input");
+  textInput.setAttribute("autocapitalize", "off");
+  textInput.setAttribute("autocomplete", "off");
+  textInput.spellcheck = false;
+  controls.appendChild(textInput);
+  Module.clawTouchText = [];
+  const keyboardPulses = [];
+  let releaseKeyboardPulse = false;
+  Module.clawTakeTouchKey = () => {
+    if (releaseKeyboardPulse) {
+      releaseKeyboardPulse = false;
+      return 0;
+    }
+    const key = keyboardPulses.shift() || 0;
+    releaseKeyboardPulse = key !== 0;
+    return key;
+  };
+  function submitText(value) {
+    for (const character of value) {
+      Module.clawTouchText.push(character.codePointAt(0));
+      if (Module.clawGameState === 3 || Module.clawGameState === 4) {
+        const key = character.toUpperCase().codePointAt(0);
+        if (key === 32 || key >= 48 && key <= 57 || key >= 65 && key <= 90) keyboardPulses.push(key);
+      }
+    }
+  }
+  textInput.addEventListener("input", event => {
+    if (event.isComposing) return;
+    if (event.inputType === "deleteContentBackward") submitText("\b"); else submitText(textInput.value);
+    textInput.value = "";
+  });
+  textInput.addEventListener("compositionend", () => {
+    submitText(textInput.value);
+    textInput.value = "";
+  });
+  textInput.addEventListener("keydown", event => {
+    event.stopPropagation();
+    if (event.key === "Enter" || event.key === "Escape") {
+      event.preventDefault();
+      dispatchMenuKey(event.key);
+      textInput.blur();
+      Module.canvas.focus();
+    }
+  });
+  // The native game menu owns presentation; these methods only change input settings.
+  Module.clawTouchSettings = {
+    enabled: () => enabled,
+    style: () => [ "4", "8", "stick" ].indexOf(config.style),
+    size: () => [ .75, 1, 1.25 ].indexOf(config.size),
+    cycleSize() {
+      config.size = {
+        .75: 1,
+        1: 1.25,
+        1.25: .75
+      }[config.size];
+      save();
+      update();
+    },
+    action: mask => config.actions.includes(mask),
+    toggle() {
+      enabled = !enabled;
+      config.enabled = enabled;
+      firstInput = false;
+      save();
+      clear();
+    },
+    cycleStyle() {
+      config.style = {
+        4: "8",
+        8: "stick",
+        stick: "4"
+      }[config.style];
+      save();
+      clear();
+    },
+    toggleAction(mask) {
+      config.actions = config.actions.includes(mask) ? config.actions.filter(value => value !== mask) : [ ...config.actions, mask ];
+      save();
+      clear();
+    },
+    reorganize() {
+      enabled = true;
+      config.enabled = true;
+      firstInput = false;
+      editing = true;
+      clear();
+      // Measure every control before taking any of them out of grid flow.
+      const positions = movable.map(item => {
+        if (item.hidden) return null;
+        const rect = item.getBoundingClientRect();
+        const point = local({
+          clientX: rotated() ? rect.right : rect.left,
+          clientY: rect.top
+        });
+        return {
+          x: point.x / controls.clientWidth,
+          y: point.y / controls.clientHeight
+        };
+      });
+      positions.forEach((pos, index) => {
+        if (pos) config.positions[index] = pos;
+      });
+      place();
+      save();
+    },
+    finishReorganizing() {
+      editing = false;
+      drags.clear();
+      save();
+      clear();
+    },
+    resetPositions() {
+      config.positions = {};
+      save();
+      update();
+    }
+  };
+  const movable = [ pad, stick, ...gameplayButtons, ...gameplayMenuButtons, keyboard ], drags = new Map;
+  function rotated() {
+    return document.documentElement.classList.contains("claw-rotated");
+  }
+  function local(event) {
+    const rect = controls.getBoundingClientRect();
+    return rotated() ? {
+      x: event.clientY - rect.top,
+      y: rect.right - event.clientX
+    } : {
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top
+    };
+  }
+  function place() {
+    movable.forEach((item, index) => {
+      const pos = config.positions[index];
+      for (const key of [ "position", "left", "top", "right", "bottom" ]) item.style[key] = "";
+      if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return;
+      item.style.position = "fixed";
+      item.style.left = Math.max(0, Math.min(controls.clientWidth - item.offsetWidth, pos.x * controls.clientWidth)) + "px";
+      item.style.top = Math.max(0, Math.min(controls.clientHeight - item.offsetHeight, pos.y * controls.clientHeight)) + "px";
+      item.style.right = "auto";
+      item.style.bottom = "auto";
+    });
+  }
+  window.addEventListener("resize", place);
+  window.addEventListener("keydown", event => {
+    if (firstInput && ![ "Shift", "Control", "Alt", "Meta" ].includes(event.key)) firstInput = false;
+  }, true);
   function update() {
     const playing = Module.clawGameState === 3 || Module.clawGameState === 4;
     const initialized = Module.clawGameState > 0;
-    pad.hidden = Module.clawGameState === 2;
-    for (const button of gameplayButtons) button.hidden = !playing;
-    for (const button of menuButtons) button.hidden = !initialized || playing;
-    for (const button of gameplayMenuButtons) button.hidden = !playing;
+    pad.hidden = Module.clawGameState === 2 || config.style === "stick";
+    stick.hidden = config.style !== "stick" || Module.clawGameState === 2;
+    diagonals.forEach(button => button.hidden = config.style !== "8");
+    keyboard.hidden = !initialized && !editing;
+    controls.hidden = !enabled;
+    for (const item of [ pad, actions, gameplayMenu, stick, keyboard ]) item.style.zoom = String(config.size);
+    place();
+    for (const button of gameplayButtons) button.hidden = !(playing || editing) || !config.actions.includes(button.touchMask);
+    for (const button of menuButtons) button.hidden = !initialized || playing || editing;
+    for (const button of gameplayMenuButtons) button.hidden = !(playing || editing);
     let held = 0;
     for (const [id, mask] of pointers) {
       const button = pointerButtons.get(id);
       if ((playing && menuButtons.includes(button)) || (!playing && gameplayButtons.includes(button))) continue;
+      if (menuButtons.includes(button) || gameplayMenuButtons.includes(button)) continue;
       held |= mask;
     }
-    Module.clawTouchActions = held;
+    Module.clawTouchActions = enabled && !editing ? held : 0;
     document.body.classList.toggle("touch-controls-visible", !controls.hidden);
-    Module.clawTouchMode = !controls.hidden;
+    Module.clawTouchMode = !controls.hidden && !editing;
     document.documentElement.style.cursor = controls.hidden ? "" : "none";
     document.body.style.cursor = controls.hidden ? "" : "none";
     Module.canvas.style.cursor = controls.hidden ? "" : "none";
     for (const button of buttons) {
-      const active = (held & button.touchMask) === button.touchMask;
+      const active = button.touchMask !== 0 && (held & button.touchMask) === button.touchMask;
       button.classList.toggle("active", active);
       button.setAttribute("aria-pressed", String(active));
     }
   }
   function clear() {
+    keyboardPulses.length = 0;
+    releaseKeyboardPulse = false;
     pointers.clear();
+    pointerButtons.clear();
+    for (const id of menuDirectionHeld.keys()) stopMenuDirection(id);
+    menuSelectHeld = menuBackHeld = gameplayMenuHeld = false;
     update();
   }
   function dispatchMenuKey(key) {
@@ -187,20 +378,62 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
       bubbles: true
     }));
   }
+  function stopMenuDirection(id) {
+    const held = menuDirectionHeld.get(id);
+    if (held) clearTimeout(held.timer);
+    menuDirectionHeld.delete(id);
+  }
+  function holdMenuDirection(id, key) {
+    if (menuDirectionHeld.get(id)?.key === key) return;
+    stopMenuDirection(id);
+    if (!key) return;
+    const held = {
+      key,
+      timer: null
+    };
+    menuDirectionHeld.set(id, held);
+    function repeat() {
+      if (menuDirectionHeld.get(id) !== held) return;
+      if (!enabled || editing || Module.clawDeveloperEditing || document.hidden || Module.clawGameState === 3 || Module.clawGameState === 4) {
+        stopMenuDirection(id);
+        return;
+      }
+      dispatchMenuKey(key);
+      if (menuDirectionHeld.get(id) === held) held.timer = setTimeout(repeat, 100);
+    }
+    dispatchMenuKey(key);
+    if (menuDirectionHeld.get(id) === held) held.timer = setTimeout(repeat, 400);
+  }
   function move(event) {
     if (Module.clawDeveloperEditing) {
       clear();
       return;
     }
+    if (!enabled || editing) return;
     const target = document.elementFromPoint(event.clientX, event.clientY);
+    if (target === stick || pointerButtons.get(event.pointerId) === stick) {
+      const rect = stick.getBoundingClientRect();
+      let x = (event.clientX - rect.left) / rect.width * 2 - 1;
+      let y = (event.clientY - rect.top) / rect.height * 2 - 1;
+      if (rotated()) [x, y] = [ y, -x ];
+      const mask = (x < -.3 ? left : x > .3 ? right : 0) | (y < -.3 ? up : y > .3 ? down : 0);
+      pointerButtons.set(event.pointerId, stick);
+      if (Module.clawGameState === 3 || Module.clawGameState === 4) pointers.set(event.pointerId, mask); else {
+        const key = directionKeys.get(mask);
+        holdMenuDirection(event.pointerId, key);
+        pointers.set(event.pointerId, 0);
+      }
+      update();
+      return;
+    }
     pointers.set(event.pointerId, buttons.includes(target) ? target.touchMask : 0);
     pointerButtons.set(event.pointerId, buttons.includes(target) ? target : null);
     const button = buttons.includes(target) ? target : null;
     const playing = Module.clawGameState === 3 || Module.clawGameState === 4;
+    if (playing || !directionKeys.has(button && button.touchMask)) stopMenuDirection(event.pointerId);
     if (!playing && directionKeys.has(button && button.touchMask)) {
       const key = directionKeys.get(button.touchMask);
-      if (!menuDirectionHeld.has(event.pointerId)) dispatchMenuKey(key);
-      menuDirectionHeld.set(event.pointerId, key);
+      holdMenuDirection(event.pointerId, key);
       pointers.set(event.pointerId, 0);
     } else if (playing && gameplayMenuButtons.includes(button)) {
       if (!gameplayMenuHeld) dispatchMenuKey("Escape");
@@ -217,26 +450,69 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
       clear();
       return;
     }
-    if (event.pointerType === "touch") {
-      controls.hidden = false;
-      if (Module.clawHideCursor) Module.clawHideCursor();
+    if (firstInput && [ "touch", "mouse", "pen" ].includes(event.pointerType)) {
+      firstInput = false;
+      if (config.enabled === null) {
+        enabled = event.pointerType === "touch";
+        if (enabled) {
+          config.enabled = true;
+          save();
+        }
+      } else enabled = config.enabled;
+      if (enabled && Module.clawHideCursor) Module.clawHideCursor();
       update();
     }
   }, true);
   controls.addEventListener("pointerdown", function(event) {
-    if (event.pointerType !== "touch") return;
+    if (editing) {
+      event.preventDefault();
+      const item = movable.find(item => item === event.target || item.contains(event.target));
+      if (item) {
+        const point = local(event), rect = item.getBoundingClientRect();
+        const origin = local({
+          clientX: rotated() ? rect.right : rect.left,
+          clientY: rect.top
+        });
+        drags.set(event.pointerId, {
+          item,
+          dx: point.x - origin.x,
+          dy: point.y - origin.y
+        });
+        controls.setPointerCapture(event.pointerId);
+      }
+      return;
+    }
+    if (event.target === textInput) return;
+    if (event.target === keyboard && enabled) {
+      event.preventDefault();
+      clear();
+      textInput.focus();
+      return;
+    }
+    if (event.pointerType !== "touch" || !enabled) return;
     event.preventDefault();
     controls.setPointerCapture(event.pointerId);
     Module.canvas.focus();
     move(event);
   });
   controls.addEventListener("pointermove", function(event) {
+    if (drags.has(event.pointerId)) {
+      event.preventDefault();
+      const {item, dx, dy} = drags.get(event.pointerId), point = local(event);
+      config.positions[movable.indexOf(item)] = {
+        x: Math.max(0, Math.min(controls.clientWidth - item.offsetWidth, point.x - dx)) / controls.clientWidth,
+        y: Math.max(0, Math.min(controls.clientHeight - item.offsetHeight, point.y - dy)) / controls.clientHeight
+      };
+      place();
+      return;
+    }
     if (!pointers.has(event.pointerId)) return;
     event.preventDefault();
     move(event);
   });
   function release(event) {
-    menuDirectionHeld.delete(event.pointerId);
+    if (drags.delete(event.pointerId)) save();
+    stopMenuDirection(event.pointerId);
     const button = pointerButtons.get(event.pointerId);
     if (button === menuButtons[0]) menuSelectHeld = false;
     if (button === menuButtons[1]) menuBackHeld = false;
@@ -247,8 +523,11 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
   }
   for (const type of [ "pointerup", "pointercancel", "lostpointercapture" ]) controls.addEventListener(type, release);
   controls.addEventListener("contextmenu", event => event.preventDefault());
-  window.addEventListener("blur", clear);
-  window.addEventListener("claw-game-state-change", update);
+  window.addEventListener("blur", () => {
+    drags.clear();
+    clear();
+  });
+  window.addEventListener("claw-game-state-change", clear);
   window.addEventListener("claw-developer-editing", clear);
   window.addEventListener("pagehide", clear);
   document.addEventListener("visibilitychange", function() {
@@ -295,13 +574,61 @@ Module.clawComparisonDownload = function() {
 };
 
 // end include: D:/Projects/Claw2/src/platform/web/comparison.js
+// include: D:/Projects/Claw2/src/platform/web/sha256.js
+// SHA-256 for asset integrity, including HTTP LAN origins without Web Crypto.
+(function() {
+  const k = new Uint32Array([ 1116352408, 1899447441, 3049323471, 3921009573, 961987163, 1508970993, 2453635748, 2870763221, 3624381080, 310598401, 607225278, 1426881987, 1925078388, 2162078206, 2614888103, 3248222580, 3835390401, 4022224774, 264347078, 604807628, 770255983, 1249150122, 1555081692, 1996064986, 2554220882, 2821834349, 2952996808, 3210313671, 3336571891, 3584528711, 113926993, 338241895, 666307205, 773529912, 1294757372, 1396182291, 1695183700, 1986661051, 2177026350, 2456956037, 2730485921, 2820302411, 3259730800, 3345764771, 3516065817, 3600352804, 4094571909, 275423344, 430227734, 506948616, 659060556, 883997877, 958139571, 1322822218, 1537002063, 1747873779, 1955562222, 2024104815, 2227730452, 2361852424, 2428436474, 2756734187, 3204031479, 3329325298 ]);
+  const rotate = (x, n) => (x >>> n) | (x << (32 - n));
+  Module.clawSHA256 = async function(input) {
+    const bytes = input instanceof ArrayBuffer ? new Uint8Array(input) : new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+    if (globalThis.crypto?.subtle) {
+      return Array.from(new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", bytes)), b => b.toString(16).padStart(2, "0")).join("");
+    }
+    const h = new Uint32Array([ 1779033703, 3144134277, 1013904242, 2773480762, 1359893119, 2600822924, 528734635, 1541459225 ]);
+    const w = new Uint32Array(64), block = new Uint8Array(64), view = new DataView(block.buffer);
+    const length = Math.ceil((bytes.length + 9) / 64) * 64;
+    for (let offset = 0; offset < length; offset += 64) {
+      block.fill(0);
+      block.set(bytes.subarray(offset, Math.min(offset + 64, bytes.length)));
+      if (offset <= bytes.length && bytes.length < offset + 64) block[bytes.length - offset] = 128;
+      if (offset + 64 === length) {
+        view.setUint32(56, Math.floor(bytes.length / 536870912));
+        view.setUint32(60, (bytes.length * 8) >>> 0);
+      }
+      for (let i = 0; i < 16; i++) w[i] = view.getUint32(i * 4);
+      for (let i = 16; i < 64; i++) {
+        const x = w[i - 15], y = w[i - 2];
+        w[i] = (w[i - 16] + (rotate(x, 7) ^ rotate(x, 18) ^ (x >>> 3)) + w[i - 7] + (rotate(y, 17) ^ rotate(y, 19) ^ (y >>> 10))) >>> 0;
+      }
+      let [a, b, c, d, e, f, g, z] = h;
+      for (let i = 0; i < 64; i++) {
+        const t1 = (z + (rotate(e, 6) ^ rotate(e, 11) ^ rotate(e, 25)) + ((e & f) ^ (~e & g)) + k[i] + w[i]) >>> 0;
+        const t2 = ((rotate(a, 2) ^ rotate(a, 13) ^ rotate(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
+        z = g;
+        g = f;
+        f = e;
+        e = (d + t1) >>> 0;
+        d = c;
+        c = b;
+        b = a;
+        a = (t1 + t2) >>> 0;
+      }
+      [ a, b, c, d, e, f, g, z ].forEach((value, i) => h[i] = (h[i] + value) >>> 0);
+      // Keep loading UI responsive while hashing large assets on phones.
+      if ((offset + 64) % (256 * 1024) === 0) await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    return Array.from(h, x => x.toString(16).padStart(8, "0")).join("");
+  };
+})();
+
+// end include: D:/Projects/Claw2/src/platform/web/sha256.js
 // include: D:/Projects/Claw2/src/platform/web/release-assets.js
 // Single source: GitHub Releases, reached through the same-origin read-through proxy.
 // Files are fetched separately at startup, language selection, and level entry.
 (function() {
   const packs = new Set([ "BaseAssets", "BR", "DE", "EN", "ES", "JP", "PL", "RU" ]);
   const manifests = new Map, loaded = new Set;
-  const digest = async bytes => Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), b => b.toString(16).padStart(2, "0")).join("");
+  const digest = bytes => Module.clawSHA256(bytes);
   const base = () => Module.clawAssetBaseURL || "/assets/";
   const url = path => new URL(base() + path, location.href).href;
   const cachePromise = typeof caches === "undefined" ? Promise.resolve(null) : caches.open("claw-release-assets-v1").catch(() => null);
@@ -9394,7 +9721,8 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  697452: () => {
+  701180: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
+  701257: () => {
     const token = Module.clawComparison && Module.clawComparison.token;
     if (typeof token !== "string") return 0;
     const size = lengthBytesUTF8(token) + 1;
@@ -9402,48 +9730,64 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  697689: () => {
+  701494: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  697811: () => {
+  701616: () => {
     Module.clawHideCursor = function() {
       _clawHideCursor();
     };
   },
-  697874: () => {
+  701679: () => {
     Module.clawRedrawScreen = function() {
       _clawRedrawScreen();
     };
   },
-  697941: () => {
+  701746: () => {
     Module.clawResizeScreen = function() {
       _clawResizeScreen();
     };
     Module.clawResizeScreen();
   },
-  698035: $0 => {
+  701840: () => {
+    Module.clawUpdateBackgroundAudio = function() {
+      _clawUpdateBackgroundAudio();
+    };
+    document.addEventListener("visibilitychange", Module.clawUpdateBackgroundAudio);
+    window.addEventListener("blur", Module.clawUpdateBackgroundAudio);
+    window.addEventListener("focus", Module.clawUpdateBackgroundAudio);
+    window.addEventListener("pagehide", function() {
+      Module.clawPageHidden = true;
+      Module.clawUpdateBackgroundAudio();
+    });
+    window.addEventListener("pageshow", function() {
+      Module.clawPageHidden = false;
+      Module.clawUpdateBackgroundAudio();
+    });
+  },
+  702380: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  698101: () => {
+  702446: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  698164: () => {
+  702509: () => {
     Module.setStatus("Gra została zatrzymana. Odśwież stronę, aby uruchomić ją ponownie.");
   },
-  698262: $0 => {
+  702607: $0 => {
     Module.setStatus("Błąd renderowania: " + UTF8ToString($0));
   },
-  698328: () => {
+  702673: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  698389: () => {
+  702734: () => {
     Module.clawTextShader = null;
   },
-  698423: () => {
+  702768: () => {
     Module.clawTextUniforms = {};
   },
-  698457: ($0, $1, $2, $3) => {
+  702802: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -9453,42 +9797,78 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  698610: ($0, $1, $2, $3, $4) => {
+  702955: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  698675: ($0, $1) => {
+  703020: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  698729: ($0, $1, $2) => {
+  703074: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  698788: $0 => {
+  703133: $0 => {
     Module.clawRequestLevel($0);
   },
-  698821: $0 => Module.clawLevels[$0].status,
-  698862: $0 => Module.clawLevels[$0].progress,
-  698905: $0 => Module.clawLevels[$0].status,
-  698946: $0 => {
+  703166: $0 => Module.clawLevels[$0].status,
+  703207: $0 => Module.clawLevels[$0].progress,
+  703250: $0 => Module.clawLevels[$0].status,
+  703291: $0 => {
     delete Module.clawLevels[$0];
   },
-  698980: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  699043: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  699106: $0 => {
+  703325: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
+  703425: ($0, $1, $2, $3, $4, $5) => {
+    if (!Module.clawMapPointer) return;
+    const point = Module.clawMapPointer($1, $2, $3, $4, $5);
+    HEAPF32[$0 >> 2] = point.x;
+    HEAPF32[($0 >> 2) + 1] = point.y;
+  },
+  703584: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  703647: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  703710: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  699154: () => !!globalThis.clawDiscordActivity,
-  699199: () => {
+  703758: () => !!globalThis.clawDiscordActivity,
+  703803: () => {
     Module.clawQuit();
   },
-  699222: () => Module.clawTouchMode ? 1 : 0,
-  699263: () => {
+  703826: () => Module.clawTouchMode ? 1 : 0,
+  703867: () => Module.clawTouchSettings.enabled(),
+  703914: () => Module.clawTouchSettings.style(),
+  703959: () => Module.clawTouchSettings.size(),
+  704003: () => {
+    Module.clawTouchSettings.toggle();
+  },
+  704042: () => {
+    Module.clawTouchSettings.cycleStyle();
+  },
+  704085: () => {
+    Module.clawTouchSettings.cycleSize();
+  },
+  704127: $0 => Module.clawTouchSettings.action($0),
+  704175: $0 => {
+    Module.clawTouchSettings.toggleAction($0);
+  },
+  704222: () => {
+    Module.clawTouchSettings.reorganize();
+  },
+  704265: () => {
+    Module.clawTouchSettings.finishReorganizing();
+  },
+  704316: () => {
+    Module.clawTouchSettings.resetPositions();
+  },
+  704363: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  699385: () => Module.clawTouchMode ? 1 : 0,
-  699426: () => Module.clawTouchActions || 0,
-  699467: $0 => {
+  704485: () => Module.clawTouchMode ? 1 : 0,
+  704526: () => {
+    if (Module.clawUpdateBackgroundAudio) Module.clawUpdateBackgroundAudio();
+  },
+  704604: () => Module.clawTouchActions || 0,
+  704645: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
+  704713: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -9496,10 +9876,10 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  699682: ($0, $1) => {
+  704928: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  699739: () => {
+  704985: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9508,7 +9888,7 @@ var ASM_CONSTS = {
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  699985: ($0, $1, $2, $3, $4) => {
+  705231: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -9517,14 +9897,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  700177: $0 => {
+  705423: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  700308: () => {
+  705554: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -9532,7 +9912,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  700455: () => {
+  705701: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     } else if (typeof (navigator.webkitGetUserMedia) !== "undefined") {
@@ -9540,7 +9920,7 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  700689: $0 => {
+  705935: $0 => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9564,8 +9944,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  701252: () => Module["SDL3"].audioContext.sampleRate,
-  701303: ($0, $1, $2, $3) => {
+  706498: () => Module["SDL3"].audioContext.sampleRate,
+  706549: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9607,7 +9987,7 @@ var ASM_CONSTS = {
       }, have_microphone, no_microphone);
     }
   },
-  703144: ($0, $1, $2, $3) => {
+  708390: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var playback = SDL3.audio_playback;
     playback.callbackGeneration = (playback.callbackGeneration || 0) + 1;
@@ -9647,7 +10027,7 @@ var ASM_CONSTS = {
       playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  704679: $0 => {
+  709925: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9682,7 +10062,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  705908: ($0, $1) => {
+  711154: ($0, $1) => {
     var buf = $0 >>> 2;
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -9696,7 +10076,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  706421: ($0, $1) => {
+  711667: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -9715,14 +10095,14 @@ var ASM_CONSTS = {
       }
     }
   },
-  707048: () => {
+  712294: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
     Module["SDL3"].camera = {};
   },
-  707149: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  707208: ($0, $1, $2, $3, $4, $5, $6) => {
+  712395: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  712454: ($0, $1, $2, $3, $4, $5, $6) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -9796,7 +10176,7 @@ var ASM_CONSTS = {
       dynCall("iiiiii", outcome, [ device, 0, 0, 0, 0 ]);
     });
   },
-  709499: () => {
+  714745: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -9804,7 +10184,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  709750: ($0, $1, $2) => {
+  714996: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -9817,12 +10197,12 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  710128: () => {
+  715374: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  710215: $0 => {
+  715461: $0 => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9833,7 +10213,7 @@ var ASM_CONSTS = {
     }
     return 1;
   },
-  710390: ($0, $1, $2) => {
+  715636: ($0, $1, $2) => {
     let gamepads = navigator["getGamepads"]();
     if (!gamepads) {
       return 0;
@@ -9850,7 +10230,7 @@ var ASM_CONSTS = {
     });
     return 1;
   },
-  710726: ($0, $1) => {
+  715972: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -9884,7 +10264,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  711434: ($0, $1, $2, $3) => {
+  716680: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -9943,7 +10323,7 @@ var ASM_CONSTS = {
     }
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
   },
-  712663: ($0, $1, $2, $3, $4) => {
+  717909: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -9964,17 +10344,17 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  713321: $0 => {
+  718567: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  713404: () => {
+  718650: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  713473: ($0, $1, $2) => {
+  718719: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10034,7 +10414,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointermove", SDL3.eventHandlerPointerGeneric);
     }
   },
-  715266: ($0, $1, $2) => {
+  720512: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10102,7 +10482,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  717419: $0 => {
+  722665: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10118,7 +10498,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  718249: $0 => {
+  723495: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10133,7 +10513,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerPointerGeneric = undefined;
     }
   },
-  718934: () => {
+  724180: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -10145,7 +10525,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  719143: () => {
+  724389: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -10153,17 +10533,17 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  719396: () => window.innerWidth,
-  719426: () => window.innerHeight,
-  719457: $0 => {
+  724642: () => window.innerWidth,
+  724672: () => window.innerHeight,
+  724703: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  719566: () => {
+  724812: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  719640: () => {
+  724886: () => {
     if (window.matchMedia) {
       if (typeof (Module["SDL3"]) === "undefined") {
         Module["SDL3"] = {};
@@ -10176,14 +10556,14 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  720031: $0 => {
+  725277: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  720071: () => {
+  725317: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  720188: $0 => {
+  725434: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
@@ -10243,6 +10623,8 @@ var _fflush = makeInvalidEarlyAccess("_fflush");
 var _fileno = makeInvalidEarlyAccess("_fileno");
 
 var _SDL_free = Module["_SDL_free"] = makeInvalidEarlyAccess("_SDL_free");
+
+var _clawUpdateBackgroundAudio = Module["_clawUpdateBackgroundAudio"] = makeInvalidEarlyAccess("_clawUpdateBackgroundAudio");
 
 var _clawHideCursor = Module["_clawHideCursor"] = makeInvalidEarlyAccess("_clawHideCursor");
 
@@ -10320,6 +10702,7 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["fflush"] !== "undefined", "missing Wasm export: fflush");
   assert(typeof wasmExports["fileno"] !== "undefined", "missing Wasm export: fileno");
   assert(typeof wasmExports["SDL_free"] !== "undefined", "missing Wasm export: SDL_free");
+  assert(typeof wasmExports["clawUpdateBackgroundAudio"] !== "undefined", "missing Wasm export: clawUpdateBackgroundAudio");
   assert(typeof wasmExports["clawHideCursor"] !== "undefined", "missing Wasm export: clawHideCursor");
   assert(typeof wasmExports["clawRedrawScreen"] !== "undefined", "missing Wasm export: clawRedrawScreen");
   assert(typeof wasmExports["clawResizeScreen"] !== "undefined", "missing Wasm export: clawResizeScreen");
@@ -10358,6 +10741,7 @@ function assignWasmExports(wasmExports) {
   _fflush = createExportWrapper("fflush", wasmExports["fflush"], 1);
   _fileno = createExportWrapper("fileno", wasmExports["fileno"], 1);
   _SDL_free = Module["_SDL_free"] = createExportWrapper("SDL_free", wasmExports["SDL_free"], 1);
+  _clawUpdateBackgroundAudio = Module["_clawUpdateBackgroundAudio"] = createExportWrapper("clawUpdateBackgroundAudio", wasmExports["clawUpdateBackgroundAudio"], 0);
   _clawHideCursor = Module["_clawHideCursor"] = createExportWrapper("clawHideCursor", wasmExports["clawHideCursor"], 0);
   _clawRedrawScreen = Module["_clawRedrawScreen"] = createExportWrapper("clawRedrawScreen", wasmExports["clawRedrawScreen"], 0);
   _clawResizeScreen = Module["_clawResizeScreen"] = createExportWrapper("clawResizeScreen", wasmExports["clawResizeScreen"], 0);
@@ -11103,6 +11487,29 @@ function invoke_viffffi(index, a1, a2, a3, a4, a5, a6) {
   }
 }
 
+function invoke_jii(index, a1, a2) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+    return 0n;
+  }
+}
+
+function invoke_iiijj(index, a1, a2, a3, a4) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_fiff(index, a1, a2, a3) {
   var sp = stackSave();
   try {
@@ -11147,33 +11554,10 @@ function invoke_viiif(index, a1, a2, a3, a4) {
   }
 }
 
-function invoke_jii(index, a1, a2) {
-  var sp = stackSave();
-  try {
-    return getWasmTableEntry(index)(a1, a2);
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-    return 0n;
-  }
-}
-
 function invoke_viiiifi(index, a1, a2, a3, a4, a5, a6) {
   var sp = stackSave();
   try {
     getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_iiijj(index, a1, a2, a3, a4) {
-  var sp = stackSave();
-  try {
-    return getWasmTableEntry(index)(a1, a2, a3, a4);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;

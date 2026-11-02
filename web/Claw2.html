@@ -33,6 +33,11 @@ html.claw-rotated .touch-pad,html.claw-rotated .touch-actions{bottom:max(16px,en
 html.claw-rotated .touch-menu{top:max(16px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left))}
 html.claw-rotated .touch-pad{left:max(16px,env(safe-area-inset-left))}
 html.claw-rotated .touch-actions{right:max(16px,env(safe-area-inset-right))}
+#touch-controls button[hidden]{display:none}
+#touch-controls .touch-stick{position:absolute;left:20px;bottom:20px;width:150px;height:150px;border-radius:50%;font-size:48px;pointer-events:auto;touch-action:none;background:radial-gradient(circle,#ffffff60 0 22%,#172536aa 24%)}
+#touch-controls .touch-keyboard{position:absolute;top:max(16px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));pointer-events:auto;font-size:26px}
+#touch-controls .touch-menu button{font-size:26px}
+.touch-text-input{position:absolute;top:0;left:50%;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none;font-size:16px}
 </style>
 <div id="game">
 <canvas id="canvas" tabindex="0" aria-label="Claw 2" oncontextmenu="event.preventDefault()"></canvas>
@@ -72,6 +77,27 @@ for (const id of ['canvas', 'loading']) {
 var Module = {
     clawAssetBaseURL: globalThis.CLAW_ASSET_BASE_URL || '/assets/',
     canvas: document.getElementById('canvas'),
+    // SDL scales bounding-rectangle offsets by the untransformed CSS size.
+    // Undo that scaling and the shell's clockwise rotation before UI mapping.
+    clawMapPointer: function (x, y, width, height, touchMouse) {
+        if (!document.documentElement.classList.contains('claw-rotated')) return {x, y};
+        const rect = Module.canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height || !width || !height) return {x, y};
+        // SDL's browser touch-to-mouse emulation reports coordinates in a
+        // different orientation. Use the original client point to avoid
+        // applying SDL's touch scaling and the CSS rotation twice.
+        if (touchMouse && Module.clawLastTouchPointer) {
+            const touch = Module.clawLastTouchPointer;
+            return {
+                x: (touch.y - rect.top) / rect.height * width,
+                y: (1 - (touch.x - rect.left) / rect.width) * height
+            };
+        }
+        return {
+            x: y / height * rect.width / rect.height * width,
+            y: (1 - x / width * rect.height / rect.width) * height
+        };
+    },
     clawViewport: {width: clawScreenWidth, height: clawScreenHeight},
     clawResolution: {width: clawScreenWidth, height: clawScreenHeight},
     setStatus: function (text) {
@@ -156,6 +182,9 @@ var Module = {
         console.error(error);
     },
     clawStarted: function () {
+        // Startup resizes SDL's canvas after the initial state draws. Restore
+        // static screens on the first browser frame before revealing them.
+        if (Module.clawRedrawScreen) Module.clawRedrawScreen();
         Module.clawPhase = 'running';
         Module.setStatus('');
     },
@@ -187,6 +216,12 @@ function clawHandleResize() {
 window.addEventListener('resize', clawHandleResize);
 window.addEventListener('orientationchange', clawHandleResize);
 if (window.visualViewport) window.visualViewport.addEventListener('resize', clawHandleResize);
+function clawRememberTouchPointer(event) {
+    if (event.pointerType === 'touch')
+        Module.clawLastTouchPointer = {x: event.clientX, y: event.clientY};
+}
+window.addEventListener('pointerdown', clawRememberTouchPointer, true);
+window.addEventListener('pointermove', clawRememberTouchPointer, true);
 window.addEventListener('pointerdown', function () {
     const root = document.documentElement;
     const enterFullscreen = root.requestFullscreen ? root.requestFullscreen() : Promise.resolve();
