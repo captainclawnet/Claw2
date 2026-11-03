@@ -897,6 +897,83 @@ Module.clawRenderText = function(input, output, width, height) {
   if (gl.getError() !== gl.NO_ERROR) throw new Error("Błąd renderowania materiału tekstu");
 };
 
+Module.clawRenderPalette = function(input, palette, output, width, height, paletteHeight, colors, shaderSource) {
+  shaderSource = UTF8ToString(shaderSource);
+  let state = Module.clawPaletteShader;
+  if (!state || state.source !== shaderSource) {
+    const canvas = state ? state.canvas : document.createElement("canvas");
+    const gl = state ? state.gl : canvas.getContext("webgl", {
+      alpha: true,
+      premultipliedAlpha: false,
+      antialias: false
+    });
+    if (!gl) throw new Error("WebGL unavailable");
+    const compile = (type, source) => {
+      const shader = gl.createShader(type);
+      gl.shaderSource(shader, source);
+      gl.compileShader(shader);
+      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+        const log = gl.getShaderInfoLog(shader);
+        gl.deleteShader(shader);
+        throw new Error(log);
+      }
+      return shader;
+    };
+    const fragment = shaderSource.replace(/^\s*#version[^\n]*\n/, "").replace(/gl_TexCoord\[0\]\.xy/g, "uv").replace(/\bgl_Color\b/g, "vec4(1.0)");
+    const vertex = compile(gl.VERTEX_SHADER, "attribute vec2 position; varying vec2 uv; void main(){uv=(position+1.0)*0.5;gl_Position=vec4(position,0.0,1.0);}");
+    const pixel = compile(gl.FRAGMENT_SHADER, "precision highp float; varying vec2 uv;\n" + fragment);
+    const program = gl.createProgram();
+    gl.attachShader(program, vertex);
+    gl.attachShader(program, pixel);
+    gl.linkProgram(program);
+    gl.deleteShader(vertex);
+    gl.deleteShader(pixel);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(program));
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([ -1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1 ]), gl.STATIC_DRAW);
+    state = Module.clawPaletteShader = {
+      canvas,
+      gl,
+      program,
+      buffer,
+      textures: [ gl.createTexture(), gl.createTexture() ],
+      source: shaderSource
+    };
+  }
+  const {canvas, gl, program, buffer, textures} = state;
+  canvas.width = width;
+  canvas.height = height;
+  gl.viewport(0, 0, width, height);
+  gl.disable(gl.BLEND);
+  gl.useProgram(program);
+  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  const position = gl.getAttribLocation(program, "position");
+  gl.enableVertexAttribArray(position);
+  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+  const upload = (unit, texture, w, h, pixels) => {
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+  };
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.pixelStorei(gl.PACK_ALIGNMENT, 1);
+  upload(0, textures[0], width, height, HEAPU8.subarray(input, input + width * height * 4));
+  upload(1, textures[1], 256, paletteHeight, HEAPU8.subarray(palette, palette + 256 * paletteHeight * 4));
+  gl.uniform1i(gl.getUniformLocation(program, "texture"), 0);
+  gl.uniform1i(gl.getUniformLocation(program, "palette"), 1);
+  gl.uniform1f(gl.getUniformLocation(program, "paletteHeight"), paletteHeight);
+  const names = [ "hatColor", "coatColor", "trousersColor", "bootsColor" ];
+  for (let i = 0; i < 4; i++) gl.uniform4f(gl.getUniformLocation(program, names[i]), HEAPU8[colors + i * 3] / 255, HEAPU8[colors + i * 3 + 1] / 255, HEAPU8[colors + i * 3 + 2] / 255, 1);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+  gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, HEAPU8.subarray(output, output + width * height * 4));
+  if (gl.getError() !== gl.NO_ERROR) throw new Error("WebGL Claw recolor failed");
+};
+
 // end include: D:/Projects/Claw2/src/platform/web/text-shader.js
 // include: D:/Projects/Claw2/src/platform/web/storage.js
 Module.preRun = Module.preRun || [];
@@ -5437,8 +5514,6 @@ var runEmAsmFunction = (code, sigPtr, argbuf) => {
 
 var _emscripten_asm_const_double = (code, sigPtr, argbuf) => runEmAsmFunction(code, sigPtr, argbuf);
 
-var _emscripten_asm_const_int = (code, sigPtr, argbuf) => runEmAsmFunction(code, sigPtr, argbuf);
-
 var runMainThreadEmAsm = (emAsmAddr, sigPtr, argbuf, sync) => {
   var args = readEmAsmArgs(sigPtr, argbuf);
   assert(ASM_CONSTS.hasOwnProperty(emAsmAddr), `No EM_ASM constant found at address ${emAsmAddr}.  The loaded WebAssembly file is likely out of sync with the generated JavaScript.`);
@@ -5446,6 +5521,10 @@ var runMainThreadEmAsm = (emAsmAddr, sigPtr, argbuf, sync) => {
 };
 
 var _emscripten_asm_const_int_sync_on_main_thread = (emAsmAddr, sigPtr, argbuf) => runMainThreadEmAsm(emAsmAddr, sigPtr, argbuf, 1);
+
+var _emscripten_asm_const_double_sync_on_main_thread = _emscripten_asm_const_int_sync_on_main_thread;
+
+var _emscripten_asm_const_int = (code, sigPtr, argbuf) => runEmAsmFunction(code, sigPtr, argbuf);
 
 var _emscripten_asm_const_ptr = (code, sigPtr, argbuf) => runEmAsmFunction(code, sigPtr, argbuf);
 
@@ -6123,17 +6202,6 @@ var _emscripten_exit_pointerlock = () => {
   return 0;
 };
 
-var __emscripten_runtime_keepalive_clear = () => {
-  noExitRuntime = false;
-  runtimeKeepaliveCounter = 0;
-};
-
-var _emscripten_force_exit = status => {
-  warnOnce("emscripten_force_exit cannot actually shut down the runtime, as the build does not have EXIT_RUNTIME set");
-  __emscripten_runtime_keepalive_clear();
-  _exit(status);
-};
-
 var _emscripten_get_device_pixel_ratio = () => devicePixelRatio;
 
 var _emscripten_get_element_css_size = (target, width, height) => {
@@ -6142,6 +6210,38 @@ var _emscripten_get_element_css_size = (target, width, height) => {
   var rect = getBoundingClientRect(target);
   HEAPF64[((width) >> 3)] = rect.width;
   HEAPF64[((height) >> 3)] = rect.height;
+  return 0;
+};
+
+function getFullscreenElement() {
+  return document.fullscreenElement ?? document.webkitFullscreenElement;
+}
+
+var fillFullscreenChangeEventData = eventStruct => {
+  var fullscreenElement = getFullscreenElement();
+  var isFullscreen = !!fullscreenElement;
+  // Assigning a boolean to HEAP32 with expected type coercion.
+  /** @suppress{checkTypes} */ HEAP8[eventStruct] = isFullscreen;
+  HEAP8[(eventStruct) + (1)] = JSEvents.fullscreenEnabled();
+  // If transitioning to fullscreen, report info about the element that is now fullscreen.
+  // If transitioning to windowed mode, report info about the element that just was fullscreen.
+  var reportedElement = isFullscreen ? fullscreenElement : JSEvents.previousFullscreenElement;
+  var nodeName = JSEvents.getNodeNameForTarget(reportedElement);
+  var id = reportedElement?.id ?? "";
+  stringToUTF8(nodeName, eventStruct + 2, 128);
+  stringToUTF8(id, eventStruct + 130, 128);
+  HEAP32[(((eventStruct) + (260)) >> 2)] = reportedElement?.clientWidth ?? 0;
+  HEAP32[(((eventStruct) + (264)) >> 2)] = reportedElement?.clientHeight ?? 0;
+  HEAP32[(((eventStruct) + (268)) >> 2)] = screen.width;
+  HEAP32[(((eventStruct) + (272)) >> 2)] = screen.height;
+  if (isFullscreen) {
+    JSEvents.previousFullscreenElement = fullscreenElement;
+  }
+};
+
+var _emscripten_get_fullscreen_status = fullscreenStatus => {
+  if (!JSEvents.fullscreenEnabled()) return -1;
+  fillFullscreenChangeEventData(fullscreenStatus);
   return 0;
 };
 
@@ -6194,10 +6294,6 @@ var _emscripten_get_num_gamepads = () => {
   // Otherwise the following line will throw an exception.
   return JSEvents.lastGamepadState.length;
 };
-
-function getFullscreenElement() {
-  return document.fullscreenElement ?? document.webkitFullscreenElement;
-}
 
 /** @param {number=} timeout */ var safeSetTimeout = (func, timeout) => {
   var id = safeSetTimeout.nextId++;
@@ -8550,6 +8646,48 @@ var registerFocusEventCallback = (target, userData, useCapture, callbackfunc, ev
 
 var _emscripten_set_blur_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerFocusEventCallback(target, userData, useCapture, callbackfunc, 12, "blur", targetThread);
 
+var fillDeviceMotionEventData = (eventStruct, e, target) => {
+  var a = e.acceleration;
+  var ag = e.accelerationIncludingGravity;
+  var rr = e.rotationRate;
+  var supportedFields = 0;
+  supportedFields |= a && 1;
+  supportedFields |= ag && 2;
+  supportedFields |= rr && 4;
+  HEAP32[(((eventStruct) + (72)) >> 2)] = supportedFields;
+  HEAPF64[((eventStruct) >> 3)] = a?.x;
+  HEAPF64[(((eventStruct) + (8)) >> 3)] = a?.y;
+  HEAPF64[(((eventStruct) + (16)) >> 3)] = a?.z;
+  HEAPF64[(((eventStruct) + (24)) >> 3)] = ag?.x;
+  HEAPF64[(((eventStruct) + (32)) >> 3)] = ag?.y;
+  HEAPF64[(((eventStruct) + (40)) >> 3)] = ag?.z;
+  HEAPF64[(((eventStruct) + (48)) >> 3)] = rr?.alpha;
+  HEAPF64[(((eventStruct) + (56)) >> 3)] = rr?.beta;
+  HEAPF64[(((eventStruct) + (64)) >> 3)] = rr?.gamma;
+};
+
+var registerDeviceMotionEventCallback = (target, userData, useCapture, callbackfunc, eventTypeId, eventTypeString, targetThread) => {
+  const eventSize = 80;
+  JSEvents.deviceMotionEvent ||= _malloc(eventSize);
+  var deviceMotionEventHandlerFunc = e => {
+    fillDeviceMotionEventData(JSEvents.deviceMotionEvent, e, target);
+    // TODO: Thread-safety with respect to emscripten_get_devicemotion_status()
+    if (getWasmTableEntry(callbackfunc)(eventTypeId, JSEvents.deviceMotionEvent, userData)) e.preventDefault();
+  };
+  var eventHandler = {
+    target: findEventTarget(target),
+    eventTypeString,
+    eventTypeId,
+    userData,
+    callbackfunc,
+    handlerFunc: deviceMotionEventHandlerFunc,
+    useCapture
+  };
+  return JSEvents.registerOrRemoveHandler(eventHandler);
+};
+
+var _emscripten_set_devicemotion_callback_on_thread = (userData, useCapture, callbackfunc, targetThread) => registerDeviceMotionEventCallback(2, userData, useCapture, callbackfunc, 17, "devicemotion", targetThread);
+
 var _emscripten_set_element_css_size = (target, width, height) => {
   target = findEventTarget(target);
   if (!target) return -4;
@@ -8559,28 +8697,6 @@ var _emscripten_set_element_css_size = (target, width, height) => {
 };
 
 var _emscripten_set_focus_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerFocusEventCallback(target, userData, useCapture, callbackfunc, 13, "focus", targetThread);
-
-var fillFullscreenChangeEventData = eventStruct => {
-  var fullscreenElement = getFullscreenElement();
-  var isFullscreen = !!fullscreenElement;
-  // Assigning a boolean to HEAP32 with expected type coercion.
-  /** @suppress{checkTypes} */ HEAP8[eventStruct] = isFullscreen;
-  HEAP8[(eventStruct) + (1)] = JSEvents.fullscreenEnabled();
-  // If transitioning to fullscreen, report info about the element that is now fullscreen.
-  // If transitioning to windowed mode, report info about the element that just was fullscreen.
-  var reportedElement = isFullscreen ? fullscreenElement : JSEvents.previousFullscreenElement;
-  var nodeName = JSEvents.getNodeNameForTarget(reportedElement);
-  var id = reportedElement?.id ?? "";
-  stringToUTF8(nodeName, eventStruct + 2, 128);
-  stringToUTF8(id, eventStruct + 130, 128);
-  HEAP32[(((eventStruct) + (260)) >> 2)] = reportedElement?.clientWidth ?? 0;
-  HEAP32[(((eventStruct) + (264)) >> 2)] = reportedElement?.clientHeight ?? 0;
-  HEAP32[(((eventStruct) + (268)) >> 2)] = screen.width;
-  HEAP32[(((eventStruct) + (272)) >> 2)] = screen.height;
-  if (isFullscreen) {
-    JSEvents.previousFullscreenElement = fullscreenElement;
-  }
-};
 
 var registerFullscreenChangeEventCallback = (target, userData, useCapture, callbackfunc, eventTypeId, eventTypeString, targetThread) => {
   const eventSize = 276;
@@ -8687,61 +8803,6 @@ var _emscripten_set_main_loop = (func, fps, simulateInfiniteLoop) => {
   var iterFunc = getWasmTableEntry(func);
   setMainLoop(iterFunc, fps, simulateInfiniteLoop);
 };
-
-var fillMouseEventData = (eventStruct, e, target) => {
-  assert(eventStruct % 4 == 0);
-  HEAPF64[((eventStruct) >> 3)] = e.timeStamp;
-  var idx = ((eventStruct) >> 2);
-  HEAP32[idx + 2] = e.screenX;
-  HEAP32[idx + 3] = e.screenY;
-  HEAP32[idx + 4] = e.clientX;
-  HEAP32[idx + 5] = e.clientY;
-  HEAP8[eventStruct + 24] = e.ctrlKey;
-  HEAP8[eventStruct + 25] = e.shiftKey;
-  HEAP8[eventStruct + 26] = e.altKey;
-  HEAP8[eventStruct + 27] = e.metaKey;
-  HEAP16[idx * 2 + 14] = e.button;
-  HEAP16[idx * 2 + 15] = e.buttons;
-  HEAP32[idx + 8] = e.movementX;
-  HEAP32[idx + 9] = e.movementY;
-  // Note: rect contains doubles (truncated to placate SAFE_HEAP, which is the same behaviour when writing to HEAP32 anyway)
-  var rect = getBoundingClientRect(target);
-  HEAP32[idx + 10] = e.clientX - (rect.left | 0);
-  HEAP32[idx + 11] = e.clientY - (rect.top | 0);
-};
-
-var registerMouseEventCallback = (target, userData, useCapture, callbackfunc, eventTypeId, eventTypeString, targetThread) => {
-  const eventSize = 64;
-  JSEvents.mouseEvent ||= _malloc(eventSize);
-  target = findEventTarget(target);
-  var mouseEventHandlerFunc = e => {
-    // TODO: Make this access thread safe, or this could update live while app is reading it.
-    fillMouseEventData(JSEvents.mouseEvent, e, target);
-    if (getWasmTableEntry(callbackfunc)(eventTypeId, JSEvents.mouseEvent, userData)) e.preventDefault();
-  };
-  var eventHandler = {
-    target,
-    allowsDeferredCalls: eventTypeString != "mousemove" && eventTypeString != "mouseenter" && eventTypeString != "mouseleave",
-    // Mouse move events do not allow fullscreen/pointer lock requests to be handled in them!
-    eventTypeString,
-    eventTypeId,
-    userData,
-    callbackfunc,
-    handlerFunc: mouseEventHandlerFunc,
-    useCapture
-  };
-  return JSEvents.registerOrRemoveHandler(eventHandler);
-};
-
-var _emscripten_set_mousedown_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerMouseEventCallback(target, userData, useCapture, callbackfunc, 5, "mousedown", targetThread);
-
-var _emscripten_set_mouseenter_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerMouseEventCallback(target, userData, useCapture, callbackfunc, 33, "mouseenter", targetThread);
-
-var _emscripten_set_mouseleave_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerMouseEventCallback(target, userData, useCapture, callbackfunc, 34, "mouseleave", targetThread);
-
-var _emscripten_set_mousemove_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerMouseEventCallback(target, userData, useCapture, callbackfunc, 8, "mousemove", targetThread);
-
-var _emscripten_set_mouseup_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerMouseEventCallback(target, userData, useCapture, callbackfunc, 6, "mouseup", targetThread);
 
 var screenOrientation = () => window.screen?.orientation;
 
@@ -8881,83 +8942,6 @@ var registerUiEventCallback = (target, userData, useCapture, callbackfunc, event
 
 var _emscripten_set_resize_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerUiEventCallback(target, userData, useCapture, callbackfunc, 10, "resize", targetThread);
 
-var registerTouchEventCallback = (target, userData, useCapture, callbackfunc, eventTypeId, eventTypeString, targetThread) => {
-  const eventSize = 1552;
-  JSEvents.touchEvent ||= _malloc(eventSize);
-  target = findEventTarget(target);
-  var touchEventHandlerFunc = e => {
-    assert(e);
-    var t, touches = {}, et = e.touches;
-    // To ease marshalling different kinds of touches that browser reports (all touches are listed in e.touches,
-    // only changed touches in e.changedTouches, and touches on target at a.targetTouches), mark a boolean in
-    // each Touch object so that we can later loop only once over all touches we see to marshall over to Wasm.
-    for (let t of et) {
-      // Browser might recycle the generated Touch objects between each frame (Firefox on Android), so reset any
-      // changed/target states we may have set from previous frame.
-      t.isChanged = t.onTarget = 0;
-      touches[t.identifier] = t;
-    }
-    // Mark which touches are part of the changedTouches list.
-    for (let t of e.changedTouches) {
-      t.isChanged = 1;
-      touches[t.identifier] = t;
-    }
-    // Mark which touches are part of the targetTouches list.
-    for (let t of e.targetTouches) {
-      touches[t.identifier].onTarget = 1;
-    }
-    var touchEvent = JSEvents.touchEvent;
-    HEAPF64[((touchEvent) >> 3)] = e.timeStamp;
-    HEAP8[touchEvent + 12] = e.ctrlKey;
-    HEAP8[touchEvent + 13] = e.shiftKey;
-    HEAP8[touchEvent + 14] = e.altKey;
-    HEAP8[touchEvent + 15] = e.metaKey;
-    var idx = touchEvent + 16;
-    var targetRect = getBoundingClientRect(target);
-    var numTouches = 0;
-    for (let t of Object.values(touches)) {
-      var idx32 = ((idx) >> 2);
-      // Pre-shift the ptr to index to HEAP32 to save code size
-      HEAP32[idx32 + 0] = t.identifier;
-      HEAP32[idx32 + 1] = t.screenX;
-      HEAP32[idx32 + 2] = t.screenY;
-      HEAP32[idx32 + 3] = t.clientX;
-      HEAP32[idx32 + 4] = t.clientY;
-      HEAP32[idx32 + 5] = t.pageX;
-      HEAP32[idx32 + 6] = t.pageY;
-      HEAP8[idx + 28] = t.isChanged;
-      HEAP8[idx + 29] = t.onTarget;
-      HEAP32[idx32 + 8] = t.clientX - (targetRect.left | 0);
-      HEAP32[idx32 + 9] = t.clientY - (targetRect.top | 0);
-      idx += 48;
-      if (++numTouches > 31) {
-        break;
-      }
-    }
-    HEAP32[(((touchEvent) + (8)) >> 2)] = numTouches;
-    if (getWasmTableEntry(callbackfunc)(eventTypeId, touchEvent, userData)) e.preventDefault();
-  };
-  var eventHandler = {
-    target,
-    allowsDeferredCalls: eventTypeString == "touchstart" || eventTypeString == "touchend",
-    eventTypeString,
-    eventTypeId,
-    userData,
-    callbackfunc,
-    handlerFunc: touchEventHandlerFunc,
-    useCapture
-  };
-  return JSEvents.registerOrRemoveHandler(eventHandler);
-};
-
-var _emscripten_set_touchcancel_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerTouchEventCallback(target, userData, useCapture, callbackfunc, 25, "touchcancel", targetThread);
-
-var _emscripten_set_touchend_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerTouchEventCallback(target, userData, useCapture, callbackfunc, 23, "touchend", targetThread);
-
-var _emscripten_set_touchmove_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerTouchEventCallback(target, userData, useCapture, callbackfunc, 24, "touchmove", targetThread);
-
-var _emscripten_set_touchstart_callback_on_thread = (target, userData, useCapture, callbackfunc, targetThread) => registerTouchEventCallback(target, userData, useCapture, callbackfunc, 22, "touchstart", targetThread);
-
 var fillVisibilityChangeEventData = eventStruct => {
   var visibilityStates = [ "hidden", "visible", "prerender", "unloaded" ];
   var visibilityState = visibilityStates.indexOf(document.visibilityState);
@@ -8987,6 +8971,28 @@ var registerVisibilityChangeEventCallback = (target, userData, useCapture, callb
 };
 
 var _emscripten_set_visibilitychange_callback_on_thread = (userData, useCapture, callbackfunc, targetThread) => registerVisibilityChangeEventCallback(specialHTMLTargets[1], userData, useCapture, callbackfunc, 21, "visibilitychange", targetThread);
+
+var fillMouseEventData = (eventStruct, e, target) => {
+  assert(eventStruct % 4 == 0);
+  HEAPF64[((eventStruct) >> 3)] = e.timeStamp;
+  var idx = ((eventStruct) >> 2);
+  HEAP32[idx + 2] = e.screenX;
+  HEAP32[idx + 3] = e.screenY;
+  HEAP32[idx + 4] = e.clientX;
+  HEAP32[idx + 5] = e.clientY;
+  HEAP8[eventStruct + 24] = e.ctrlKey;
+  HEAP8[eventStruct + 25] = e.shiftKey;
+  HEAP8[eventStruct + 26] = e.altKey;
+  HEAP8[eventStruct + 27] = e.metaKey;
+  HEAP16[idx * 2 + 14] = e.button;
+  HEAP16[idx * 2 + 15] = e.buttons;
+  HEAP32[idx + 8] = e.movementX;
+  HEAP32[idx + 9] = e.movementY;
+  // Note: rect contains doubles (truncated to placate SAFE_HEAP, which is the same behaviour when writing to HEAP32 anyway)
+  var rect = getBoundingClientRect(target);
+  HEAP32[idx + 10] = e.clientX - (rect.left | 0);
+  HEAP32[idx + 11] = e.clientY - (rect.top | 0);
+};
 
 var registerWheelEventCallback = (target, userData, useCapture, callbackfunc, eventTypeId, eventTypeString, targetThread) => {
   const eventSize = 96;
@@ -9678,11 +9684,11 @@ Module["FS_createDataFile"] = FS_createDataFile;
 
 Module["FS_createLazyFile"] = FS_createLazyFile;
 
-var missingLibrarySymbols = [ "writeI53ToI64Clamped", "writeI53ToI64Signaling", "writeI53ToU64Clamped", "writeI53ToU64Signaling", "convertI32PairToI53", "convertI32PairToI53Checked", "convertU32PairToI53", "getTempRet0", "createNamedFunction", "zeroMemory", "withStackSave", "inetPton4", "inetNtop4", "inetPton6", "inetNtop6", "readSockaddr", "writeSockaddr", "getDynCaller", "runtimeKeepalivePush", "runtimeKeepalivePop", "asmjsMangle", "addOnInit", "addOnPostCtor", "addOnPreMain", "STACK_SIZE", "STACK_ALIGN", "POINTER_SIZE", "ASSERTIONS", "cwrap", "convertJsFunctionToWasm", "getEmptyTableSlot", "updateTableMap", "getFunctionAddress", "addFunction", "removeFunction", "getValue", "intArrayToString", "AsciiToString", "stringToAscii", "UTF16ToString", "stringToUTF16", "lengthBytesUTF16", "UTF32ToString", "stringToUTF32", "lengthBytesUTF32", "fillDeviceOrientationEventData", "registerDeviceOrientationEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "hideEverythingExceptGivenElement", "restoreHiddenElements", "softFullscreenResizeWebGLRenderTarget", "registerPointerlockErrorEventCallback", "fillBatteryEventData", "registerBatteryEventCallback", "jsStackTrace", "getCallstack", "convertPCtoSourceLocation", "wasiRightsToMuslOFlags", "wasiOFlagsToMuslOFlags", "safeClearTimeout", "setImmediateWrapped", "safeRequestAnimationFrame", "clearImmediateWrapped", "registerPostMainLoop", "registerPreMainLoop", "getPromise", "makePromise", "addPromise", "idsToPromises", "makePromiseCallback", "incrementUncaughtExceptionCount", "decrementUncaughtExceptionCount", "Browser_asyncPrepareDataCounter", "arraySum", "addDays", "getSocketFromFD", "getSocketAddress", "FS_mkdirTree", "_setNetworkCallback", "writeGLArray", "registerWebGlEventCallback", "runAndAbortIfError", "writeStringToMemory", "writeAsciiToMemory", "allocateUTF8", "allocateUTF8OnStack", "demangle", "stackTrace", "getNativeTypeSize" ];
+var missingLibrarySymbols = [ "writeI53ToI64Clamped", "writeI53ToI64Signaling", "writeI53ToU64Clamped", "writeI53ToU64Signaling", "convertI32PairToI53", "convertI32PairToI53Checked", "convertU32PairToI53", "getTempRet0", "createNamedFunction", "zeroMemory", "withStackSave", "inetPton4", "inetNtop4", "inetPton6", "inetNtop6", "readSockaddr", "writeSockaddr", "getDynCaller", "runtimeKeepalivePush", "runtimeKeepalivePop", "asmjsMangle", "addOnInit", "addOnPostCtor", "addOnPreMain", "STACK_SIZE", "STACK_ALIGN", "POINTER_SIZE", "ASSERTIONS", "cwrap", "convertJsFunctionToWasm", "getEmptyTableSlot", "updateTableMap", "getFunctionAddress", "addFunction", "removeFunction", "getValue", "intArrayToString", "AsciiToString", "stringToAscii", "UTF16ToString", "stringToUTF16", "lengthBytesUTF16", "UTF32ToString", "stringToUTF32", "lengthBytesUTF32", "registerMouseEventCallback", "fillDeviceOrientationEventData", "registerDeviceOrientationEventCallback", "hideEverythingExceptGivenElement", "restoreHiddenElements", "softFullscreenResizeWebGLRenderTarget", "registerPointerlockErrorEventCallback", "registerTouchEventCallback", "fillBatteryEventData", "registerBatteryEventCallback", "jsStackTrace", "getCallstack", "convertPCtoSourceLocation", "wasiRightsToMuslOFlags", "wasiOFlagsToMuslOFlags", "safeClearTimeout", "setImmediateWrapped", "safeRequestAnimationFrame", "clearImmediateWrapped", "registerPostMainLoop", "registerPreMainLoop", "getPromise", "makePromise", "addPromise", "idsToPromises", "makePromiseCallback", "incrementUncaughtExceptionCount", "decrementUncaughtExceptionCount", "Browser_asyncPrepareDataCounter", "arraySum", "addDays", "getSocketFromFD", "getSocketAddress", "FS_mkdirTree", "_setNetworkCallback", "writeGLArray", "registerWebGlEventCallback", "runAndAbortIfError", "writeStringToMemory", "writeAsciiToMemory", "allocateUTF8", "allocateUTF8OnStack", "demangle", "stackTrace", "getNativeTypeSize" ];
 
 missingLibrarySymbols.forEach(missingLibrarySymbol);
 
-var unexportedSymbols = [ "run", "out", "err", "abort", "wasmExports", "writeStackCookie", "checkStackCookie", "writeI53ToI64", "readI53FromI64", "readI53FromU64", "INT53_MAX", "INT53_MIN", "bigintToI53Checked", "HEAP8", "HEAPU8", "HEAP16", "HEAPU16", "HEAP32", "HEAPU32", "HEAPF32", "HEAPF64", "HEAP64", "HEAPU64", "stackSave", "stackRestore", "stackAlloc", "setTempRet0", "ptrToString", "exitJS", "getHeapMax", "growMemory", "ENV", "ERRNO_CODES", "strError", "DNS", "Protocols", "timers", "warnOnce", "readEmAsmArgsArray", "readEmAsmArgs", "runEmAsmFunction", "runMainThreadEmAsm", "jstoi_q", "getExecutableName", "autoResumeAudioContext", "dynCall", "handleException", "keepRuntimeAlive", "callUserCallback", "maybeExit", "asyncLoad", "alignMemory", "mmapAlloc", "HandleAllocator", "wasmTable", "wasmMemory", "getUniqueRunDependency", "noExitRuntime", "addOnPreRun", "addOnExit", "addOnPostRun", "freeTableIndexes", "functionsInTableMap", "setValue", "PATH", "PATH_FS", "UTF8Decoder", "UTF8ArrayToString", "UTF8ToString", "stringToUTF8Array", "stringToUTF8", "lengthBytesUTF8", "intArrayFromString", "UTF16Decoder", "stringToNewUTF8", "stringToUTF8OnStack", "writeArrayToMemory", "JSEvents", "registerKeyEventCallback", "specialHTMLTargets", "maybeCStringToJsString", "findEventTarget", "findCanvasEventTarget", "getBoundingClientRect", "fillMouseEventData", "registerMouseEventCallback", "registerWheelEventCallback", "registerUiEventCallback", "registerFocusEventCallback", "screenOrientation", "fillOrientationChangeEventData", "registerOrientationChangeEventCallback", "fillFullscreenChangeEventData", "registerFullscreenChangeEventCallback", "callCanvasResizedCallback", "JSEvents_requestFullscreen", "JSEvents_resizeCanvasForFullscreen", "registerRestoreOldStyle", "setLetterbox", "currentFullscreenStrategy", "restoreOldWindowedStyle", "doRequestFullscreen", "fillPointerlockChangeEventData", "registerPointerlockChangeEventCallback", "requestPointerLock", "fillVisibilityChangeEventData", "registerVisibilityChangeEventCallback", "registerTouchEventCallback", "fillGamepadEventData", "registerGamepadEventCallback", "registerBeforeUnloadEventCallback", "setCanvasElementSize", "getCanvasElementSize", "UNWIND_CACHE", "ExitStatus", "getEnvStrings", "checkWasiClock", "doReadv", "doWritev", "initRandomFill", "randomFill", "safeSetTimeout", "emSetImmediate", "emClearImmediate", "promiseMap", "uncaughtExceptionCount", "exceptionLast", "exceptionCaught", "ExceptionInfo", "findMatchingCatch", "getExceptionMessageCommon", "incrementExceptionRefcount", "decrementExceptionRefcount", "getExceptionMessage", "Browser", "requestFullscreen", "setCanvasSize", "createContext", "wget", "MONTH_DAYS_REGULAR", "MONTH_DAYS_LEAP", "MONTH_DAYS_REGULAR_CUMULATIVE", "MONTH_DAYS_LEAP_CUMULATIVE", "isLeapYear", "ydayFromDate", "SYSCALLS", "preloadPlugins", "FS_createPreloadedFile", "FS_modeStringToFlags", "FS_getMode", "FS_fileDataToTypedArray", "FS_stdin_getChar_buffer", "FS_stdin_getChar", "FS_readFile", "FS", "FS_root", "FS_mounts", "FS_devices", "FS_streams", "FS_nextInode", "FS_nameTable", "FS_currentPath", "FS_initialized", "FS_ignorePermissions", "FS_syncFSRequests", "FS_lookupPath", "FS_getPath", "FS_hashName", "FS_hashAddNode", "FS_hashRemoveNode", "FS_lookupNode", "FS_createNode", "FS_destroyNode", "FS_isRoot", "FS_isMountpoint", "FS_isFile", "FS_isDir", "FS_isLink", "FS_isChrdev", "FS_isBlkdev", "FS_isFIFO", "FS_isSocket", "FS_flagsToPermissionString", "FS_nodePermissions", "FS_mayLookup", "FS_mayCreate", "FS_mayDelete", "FS_mayOpen", "FS_checkOpExists", "FS_nextfd", "FS_getStreamChecked", "FS_getStream", "FS_createStream", "FS_closeStream", "FS_dupStream", "FS_doSetAttr", "FS_chrdev_stream_ops", "FS_major", "FS_minor", "FS_makedev", "FS_registerDevice", "FS_getDevice", "FS_getMounts", "FS_syncfs", "FS_mount", "FS_unmount", "FS_lookup", "FS_mknod", "FS_statfs", "FS_statfsStream", "FS_statfsNode", "FS_create", "FS_mkdir", "FS_mkdev", "FS_symlink", "FS_link", "FS_rename", "FS_rmdir", "FS_readdir", "FS_readlink", "FS_stat", "FS_fstat", "FS_lstat", "FS_doChmod", "FS_chmod", "FS_lchmod", "FS_fchmod", "FS_doChown", "FS_chown", "FS_lchown", "FS_fchown", "FS_doTruncate", "FS_truncate", "FS_ftruncate", "FS_utime", "FS_open", "FS_close", "FS_isClosed", "FS_llseek", "FS_read", "FS_write", "FS_mmap", "FS_msync", "FS_ioctl", "FS_writeFile", "FS_cwd", "FS_chdir", "FS_createDefaultDirectories", "FS_createDefaultDevices", "FS_createSpecialDirectories", "FS_createStandardStreams", "FS_staticInit", "FS_init", "FS_quit", "FS_analyzePath", "FS_createFile", "FS_forceLoadFile", "MEMFS", "TTY", "PIPEFS", "SOCKFS", "tempFixedLengthArray", "miniTempWebGLFloatBuffers", "miniTempWebGLIntBuffers", "heapObjectForWebGLType", "toTypedArrayIndex", "webgl_enable_ANGLE_instanced_arrays", "webgl_enable_OES_vertex_array_object", "webgl_enable_WEBGL_draw_buffers", "webgl_enable_WEBGL_multi_draw", "webgl_enable_EXT_polygon_offset_clamp", "webgl_enable_EXT_clip_control", "webgl_enable_WEBGL_polygon_mode", "GL", "emscriptenWebGLGet", "computeUnpackAlignedImageSize", "colorChannelsInGlTextureFormat", "emscriptenWebGLGetTexPixelData", "emscriptenWebGLGetUniform", "webglGetProgramUniformLocation", "webglGetUniformLocation", "webglPrepareUniformLocationsBeforeFirstUse", "webglGetLeftBracePos", "emscriptenWebGLGetVertexAttrib", "__glGetActiveAttribOrUniform", "AL", "GLUT", "EGL", "GLEW", "IDBStore", "SDL", "SDL_gfx", "print", "printErr", "jstoi_s", "IDBFS", "webSockets", "WS" ];
+var unexportedSymbols = [ "run", "out", "err", "abort", "wasmExports", "writeStackCookie", "checkStackCookie", "writeI53ToI64", "readI53FromI64", "readI53FromU64", "INT53_MAX", "INT53_MIN", "bigintToI53Checked", "HEAP8", "HEAPU8", "HEAP16", "HEAPU16", "HEAP32", "HEAPU32", "HEAPF32", "HEAPF64", "HEAP64", "HEAPU64", "stackSave", "stackRestore", "stackAlloc", "setTempRet0", "ptrToString", "exitJS", "getHeapMax", "growMemory", "ENV", "ERRNO_CODES", "strError", "DNS", "Protocols", "timers", "warnOnce", "readEmAsmArgsArray", "readEmAsmArgs", "runEmAsmFunction", "runMainThreadEmAsm", "jstoi_q", "getExecutableName", "autoResumeAudioContext", "dynCall", "handleException", "keepRuntimeAlive", "callUserCallback", "maybeExit", "asyncLoad", "alignMemory", "mmapAlloc", "HandleAllocator", "wasmTable", "wasmMemory", "getUniqueRunDependency", "noExitRuntime", "addOnPreRun", "addOnExit", "addOnPostRun", "freeTableIndexes", "functionsInTableMap", "setValue", "PATH", "PATH_FS", "UTF8Decoder", "UTF8ArrayToString", "UTF8ToString", "stringToUTF8Array", "stringToUTF8", "lengthBytesUTF8", "intArrayFromString", "UTF16Decoder", "stringToNewUTF8", "stringToUTF8OnStack", "writeArrayToMemory", "JSEvents", "registerKeyEventCallback", "specialHTMLTargets", "maybeCStringToJsString", "findEventTarget", "findCanvasEventTarget", "getBoundingClientRect", "fillMouseEventData", "registerWheelEventCallback", "registerUiEventCallback", "registerFocusEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "screenOrientation", "fillOrientationChangeEventData", "registerOrientationChangeEventCallback", "fillFullscreenChangeEventData", "registerFullscreenChangeEventCallback", "callCanvasResizedCallback", "JSEvents_requestFullscreen", "JSEvents_resizeCanvasForFullscreen", "registerRestoreOldStyle", "setLetterbox", "currentFullscreenStrategy", "restoreOldWindowedStyle", "doRequestFullscreen", "fillPointerlockChangeEventData", "registerPointerlockChangeEventCallback", "requestPointerLock", "fillVisibilityChangeEventData", "registerVisibilityChangeEventCallback", "fillGamepadEventData", "registerGamepadEventCallback", "registerBeforeUnloadEventCallback", "setCanvasElementSize", "getCanvasElementSize", "UNWIND_CACHE", "ExitStatus", "getEnvStrings", "checkWasiClock", "doReadv", "doWritev", "initRandomFill", "randomFill", "safeSetTimeout", "emSetImmediate", "emClearImmediate", "promiseMap", "uncaughtExceptionCount", "exceptionLast", "exceptionCaught", "ExceptionInfo", "findMatchingCatch", "getExceptionMessageCommon", "incrementExceptionRefcount", "decrementExceptionRefcount", "getExceptionMessage", "Browser", "requestFullscreen", "setCanvasSize", "createContext", "wget", "MONTH_DAYS_REGULAR", "MONTH_DAYS_LEAP", "MONTH_DAYS_REGULAR_CUMULATIVE", "MONTH_DAYS_LEAP_CUMULATIVE", "isLeapYear", "ydayFromDate", "SYSCALLS", "preloadPlugins", "FS_createPreloadedFile", "FS_modeStringToFlags", "FS_getMode", "FS_fileDataToTypedArray", "FS_stdin_getChar_buffer", "FS_stdin_getChar", "FS_readFile", "FS", "FS_root", "FS_mounts", "FS_devices", "FS_streams", "FS_nextInode", "FS_nameTable", "FS_currentPath", "FS_initialized", "FS_ignorePermissions", "FS_syncFSRequests", "FS_lookupPath", "FS_getPath", "FS_hashName", "FS_hashAddNode", "FS_hashRemoveNode", "FS_lookupNode", "FS_createNode", "FS_destroyNode", "FS_isRoot", "FS_isMountpoint", "FS_isFile", "FS_isDir", "FS_isLink", "FS_isChrdev", "FS_isBlkdev", "FS_isFIFO", "FS_isSocket", "FS_flagsToPermissionString", "FS_nodePermissions", "FS_mayLookup", "FS_mayCreate", "FS_mayDelete", "FS_mayOpen", "FS_checkOpExists", "FS_nextfd", "FS_getStreamChecked", "FS_getStream", "FS_createStream", "FS_closeStream", "FS_dupStream", "FS_doSetAttr", "FS_chrdev_stream_ops", "FS_major", "FS_minor", "FS_makedev", "FS_registerDevice", "FS_getDevice", "FS_getMounts", "FS_syncfs", "FS_mount", "FS_unmount", "FS_lookup", "FS_mknod", "FS_statfs", "FS_statfsStream", "FS_statfsNode", "FS_create", "FS_mkdir", "FS_mkdev", "FS_symlink", "FS_link", "FS_rename", "FS_rmdir", "FS_readdir", "FS_readlink", "FS_stat", "FS_fstat", "FS_lstat", "FS_doChmod", "FS_chmod", "FS_lchmod", "FS_fchmod", "FS_doChown", "FS_chown", "FS_lchown", "FS_fchown", "FS_doTruncate", "FS_truncate", "FS_ftruncate", "FS_utime", "FS_open", "FS_close", "FS_isClosed", "FS_llseek", "FS_read", "FS_write", "FS_mmap", "FS_msync", "FS_ioctl", "FS_writeFile", "FS_cwd", "FS_chdir", "FS_createDefaultDirectories", "FS_createDefaultDevices", "FS_createSpecialDirectories", "FS_createStandardStreams", "FS_staticInit", "FS_init", "FS_quit", "FS_analyzePath", "FS_createFile", "FS_forceLoadFile", "MEMFS", "TTY", "PIPEFS", "SOCKFS", "tempFixedLengthArray", "miniTempWebGLFloatBuffers", "miniTempWebGLIntBuffers", "heapObjectForWebGLType", "toTypedArrayIndex", "webgl_enable_ANGLE_instanced_arrays", "webgl_enable_OES_vertex_array_object", "webgl_enable_WEBGL_draw_buffers", "webgl_enable_WEBGL_multi_draw", "webgl_enable_EXT_polygon_offset_clamp", "webgl_enable_EXT_clip_control", "webgl_enable_WEBGL_polygon_mode", "GL", "emscriptenWebGLGet", "computeUnpackAlignedImageSize", "colorChannelsInGlTextureFormat", "emscriptenWebGLGetTexPixelData", "emscriptenWebGLGetUniform", "webglGetProgramUniformLocation", "webglGetUniformLocation", "webglPrepareUniformLocationsBeforeFirstUse", "webglGetLeftBracePos", "emscriptenWebGLGetVertexAttrib", "__glGetActiveAttribOrUniform", "AL", "GLUT", "EGL", "GLEW", "IDBStore", "SDL", "SDL_gfx", "print", "printErr", "jstoi_s", "IDBFS", "webSockets", "WS" ];
 
 unexportedSymbols.forEach(unexportedRuntimeSymbol);
 
@@ -9721,8 +9727,8 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  701180: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
-  701257: () => {
+  710052: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
+  710129: () => {
     const token = Module.clawComparison && Module.clawComparison.token;
     if (typeof token !== "string") return 0;
     const size = lengthBytesUTF8(token) + 1;
@@ -9730,26 +9736,26 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  701494: () => {
+  710366: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  701616: () => {
+  710488: () => {
     Module.clawHideCursor = function() {
       _clawHideCursor();
     };
   },
-  701679: () => {
+  710551: () => {
     Module.clawRedrawScreen = function() {
       _clawRedrawScreen();
     };
   },
-  701746: () => {
+  710618: () => {
     Module.clawResizeScreen = function() {
       _clawResizeScreen();
     };
     Module.clawResizeScreen();
   },
-  701840: () => {
+  710712: () => {
     Module.clawUpdateBackgroundAudio = function() {
       _clawUpdateBackgroundAudio();
     };
@@ -9765,29 +9771,29 @@ var ASM_CONSTS = {
       Module.clawUpdateBackgroundAudio();
     });
   },
-  702380: $0 => {
+  711252: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  702446: () => {
+  711318: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  702509: () => {
+  711381: () => {
     Module.setStatus("Gra została zatrzymana. Odśwież stronę, aby uruchomić ją ponownie.");
   },
-  702607: $0 => {
+  711479: $0 => {
     Module.setStatus("Błąd renderowania: " + UTF8ToString($0));
   },
-  702673: () => {
+  711545: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  702734: () => {
+  711606: () => {
     Module.clawTextShader = null;
   },
-  702768: () => {
+  711640: () => {
     Module.clawTextUniforms = {};
   },
-  702802: ($0, $1, $2, $3) => {
+  711674: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -9797,78 +9803,107 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  702955: ($0, $1, $2, $3, $4) => {
+  711827: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  703020: ($0, $1) => {
+  711892: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  703074: ($0, $1, $2) => {
+  711946: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  703133: $0 => {
+  712005: $0 => {
     Module.clawRequestLevel($0);
   },
-  703166: $0 => Module.clawLevels[$0].status,
-  703207: $0 => Module.clawLevels[$0].progress,
-  703250: $0 => Module.clawLevels[$0].status,
-  703291: $0 => {
+  712038: $0 => Module.clawLevels[$0].status,
+  712079: $0 => Module.clawLevels[$0].progress,
+  712122: $0 => Module.clawLevels[$0].status,
+  712163: $0 => {
     delete Module.clawLevels[$0];
   },
-  703325: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
-  703425: ($0, $1, $2, $3, $4, $5) => {
+  712197: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
+  712297: ($0, $1, $2, $3, $4, $5) => {
     if (!Module.clawMapPointer) return;
     const point = Module.clawMapPointer($1, $2, $3, $4, $5);
     HEAPF32[$0 >> 2] = point.x;
     HEAPF32[($0 >> 2) + 1] = point.y;
   },
-  703584: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  703647: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  703710: $0 => {
+  712456: () => {
+    Module.clawPaletteShader = null;
+  },
+  712491: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+    try {
+      Module.clawRenderPalette($0, $1, $2, $3, $4, $5, $6, $7);
+      return 1;
+    } catch (error) {
+      Module.setStatus("Claw palette shader: " + error);
+      console.error(error);
+      return 0;
+    }
+  },
+  712662: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  712725: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  712788: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  703758: () => !!globalThis.clawDiscordActivity,
-  703803: () => {
+  712836: () => !!globalThis.clawDiscordActivity,
+  712881: () => {
     Module.clawQuit();
   },
-  703826: () => Module.clawTouchMode ? 1 : 0,
-  703867: () => Module.clawTouchSettings.enabled(),
-  703914: () => Module.clawTouchSettings.style(),
-  703959: () => Module.clawTouchSettings.size(),
-  704003: () => {
+  712904: () => Module.clawTouchMode ? 1 : 0,
+  712945: () => Module.clawTouchSettings.enabled(),
+  712992: () => Module.clawTouchSettings.style(),
+  713037: () => Module.clawTouchSettings.size(),
+  713081: () => {
     Module.clawTouchSettings.toggle();
   },
-  704042: () => {
+  713120: () => {
     Module.clawTouchSettings.cycleStyle();
   },
-  704085: () => {
+  713163: () => {
     Module.clawTouchSettings.cycleSize();
   },
-  704127: $0 => Module.clawTouchSettings.action($0),
-  704175: $0 => {
+  713205: $0 => Module.clawTouchSettings.action($0),
+  713253: $0 => {
     Module.clawTouchSettings.toggleAction($0);
   },
-  704222: () => {
+  713300: () => {
     Module.clawTouchSettings.reorganize();
   },
-  704265: () => {
+  713343: () => {
     Module.clawTouchSettings.finishReorganizing();
   },
-  704316: () => {
+  713394: () => {
     Module.clawTouchSettings.resetPositions();
   },
-  704363: () => {
+  713441: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  704485: () => Module.clawTouchMode ? 1 : 0,
-  704526: () => {
+  713563: () => Module.clawTouchMode ? 1 : 0,
+  713604: () => {
     if (Module.clawUpdateBackgroundAudio) Module.clawUpdateBackgroundAudio();
   },
-  704604: () => Module.clawTouchActions || 0,
-  704645: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
-  704713: $0 => {
+  713682: () => Module.clawTouchActions || 0,
+  713723: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
+  713791: () => {
+    if (typeof (Module["SDL3"]) === "undefined") {
+      Module["SDL3"] = {};
+    }
+    var SDL3 = Module["SDL3"];
+    if (typeof (SDL3.JSVarToCPtr) === "undefined") {
+      SDL3.JSVarToCPtr = function(v) {
+        return v;
+      };
+    }
+    if (typeof (SDL3.CPtrToHeap32Index) === "undefined") {
+      SDL3.CPtrToHeap32Index = function(ptr) {
+        return ptr >>> 2;
+      };
+    }
+  },
+  714105: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -9876,19 +9911,13 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  704928: ($0, $1) => {
-    alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
-  },
-  704985: () => {
-    if (typeof (Module["SDL3"]) === "undefined") {
-      Module["SDL3"] = {};
-    }
+  714320: () => {
     Module["SDL3"].dummy_audio = {};
     Module["SDL3"].dummy_audio.timers = [];
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  705231: ($0, $1, $2, $3, $4) => {
+  714497: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -9897,14 +9926,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  705423: $0 => {
+  714689: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  705554: () => {
+  714820: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -9912,22 +9941,18 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  705701: () => {
+  714967: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
-      return true;
-    } else if (typeof (navigator.webkitGetUserMedia) !== "undefined") {
       return true;
     }
     return false;
   },
-  705935: $0 => {
-    if (typeof (Module["SDL3"]) === "undefined") {
-      Module["SDL3"] = {};
-    }
+  715121: () => {
     var SDL3 = Module["SDL3"];
-    if (!$0) {
+    if (typeof (SDL3.audio_playback) === "undefined") {
       SDL3.audio_playback = {};
-    } else {
+    }
+    if (typeof (SDL3.audio_recording) === "undefined") {
       SDL3.audio_recording = {};
     }
     if (!SDL3.audioContext) {
@@ -9944,8 +9969,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  706498: () => Module["SDL3"].audioContext.sampleRate,
-  706549: ($0, $1, $2, $3) => {
+  715700: () => Module["SDL3"].audioContext.sampleRate,
+  715751: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -9980,14 +10005,9 @@ var ASM_CONSTS = {
         audio: true,
         video: false
       }).then(have_microphone).catch(no_microphone);
-    } else if (navigator.webkitGetUserMedia !== undefined) {
-      navigator.webkitGetUserMedia({
-        audio: true,
-        video: false
-      }, have_microphone, no_microphone);
     }
   },
-  708390: ($0, $1, $2, $3) => {
+  717442: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var playback = SDL3.audio_playback;
     playback.callbackGeneration = (playback.callbackGeneration || 0) + 1;
@@ -10027,7 +10047,7 @@ var ASM_CONSTS = {
       playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  709925: $0 => {
+  718977: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10062,9 +10082,9 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  711154: ($0, $1) => {
-    var buf = $0 >>> 2;
+  720206: ($0, $1) => {
     var SDL3 = Module["SDL3"];
+    var buf = SDL3.CPtrToHeap32Index($0);
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
     for (var c = 0; c < numChannels; ++c) {
       var channelData = SDL3.audio_playback.currentPlaybackBuffer["getChannelData"](c);
@@ -10076,7 +10096,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  711667: ($0, $1) => {
+  720739: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -10095,21 +10115,18 @@ var ASM_CONSTS = {
       }
     }
   },
-  712294: () => {
-    if (typeof (Module["SDL3"]) === "undefined") {
-      Module["SDL3"] = {};
-    }
+  721366: () => {
     Module["SDL3"].camera = {};
   },
-  712395: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  712454: ($0, $1, $2, $3, $4, $5, $6) => {
+  721398: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  721457: ($0, $1, $2, $3, $4) => {
     const device = $0;
     const w = $1;
     const h = $2;
     const framerate_numerator = $3;
     const framerate_denominator = $4;
-    const outcome = $5;
-    const iterate = $6;
+    const outcome = Module._SDLEmscriptenCameraPermissionOutcome;
+    const iterate = Module._SDLEmscriptenThreadIterate;
     const constraints = {};
     if ((w <= 0) || (h <= 0)) {
       constraints.video = true;
@@ -10132,7 +10149,7 @@ var ASM_CONSTS = {
       const nextframems = SDL3.camera.next_frame_time;
       const now = performance.now();
       if (now >= nextframems) {
-        dynCall("vi", iterate, [ device ]);
+        iterate(device);
         while (SDL3.camera.next_frame_time < now) {
           SDL3.camera.next_frame_time += SDL3.camera.fpsincrms;
         }
@@ -10145,7 +10162,7 @@ var ASM_CONSTS = {
       const actualh = settings.height;
       const actualfps = settings.frameRate;
       console.log("Camera is opened! Actual spec: (" + actualw + "x" + actualh + "), fps=" + actualfps);
-      if (dynCall("iiiiii", outcome, [ device, 1, actualw, actualh, actualfps ])) {
+      if (outcome(device, 1, actualw, actualh, actualfps)) {
         const video = document.createElement("video");
         video.width = actualw;
         video.height = actualh;
@@ -10173,10 +10190,10 @@ var ASM_CONSTS = {
       }
     }).catch(err => {
       console.error("Tried to open camera but it threw an error! " + err.name + ": " + err.message);
-      dynCall("iiiiii", outcome, [ device, 0, 0, 0, 0 ]);
+      outcome(device, 0, 0, 0, 0);
     });
   },
-  714745: () => {
+  723763: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -10184,7 +10201,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  714996: ($0, $1, $2) => {
+  724014: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -10197,40 +10214,112 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  715374: () => {
+  724392: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  715461: $0 => {
-    let gamepads = navigator["getGamepads"]();
-    if (!gamepads) {
-      return 0;
+  724479: $0 => {
+    let gamepad = navigator["getGamepads"]()[$0];
+    if (!gamepad || !gamepad["vibrationActuator"] || !gamepad["vibrationActuator"]["effects"] || !gamepad["vibrationActuator"]["effects"]["includes"]("trigger-rumble")) {
+      return false;
     }
-    let gamepad = gamepads[$0];
-    if (!gamepad || !gamepad["vibrationActuator"]) {
-      return 0;
-    }
-    return 1;
+    return true;
   },
-  715636: ($0, $1, $2) => {
-    let gamepads = navigator["getGamepads"]();
-    if (!gamepads) {
+  724725: $0 => {
+    let gamepad = navigator["getGamepads"]()[$0];
+    if (!gamepad) {
       return 0;
     }
-    let gamepad = gamepads[$0];
-    if (!gamepad || !gamepad["vibrationActuator"]) {
+    let vendor_str = "Vendor: ";
+    if (gamepad["id"]["indexOf"](vendor_str) > 0) {
+      let vendor_str_index = gamepad["id"]["indexOf"](vendor_str) + vendor_str["length"];
+      return parseInt(gamepad["id"]["substr"](vendor_str_index, 4), 16);
+    }
+    let id_split = gamepad["id"]["split"]("-");
+    if (id_split["length"] > 1 && !isNaN(parseInt(id_split[0], 16))) {
+      return parseInt(id_split[0], 16);
+    }
+    return 0;
+  },
+  725190: $0 => {
+    let gamepad = navigator["getGamepads"]()[$0];
+    if (!gamepad) {
       return 0;
+    }
+    let product_str = "Product: ";
+    if (gamepad["id"]["indexOf"](product_str) > 0) {
+      let product_str_index = gamepad["id"]["indexOf"](product_str) + product_str["length"];
+      return parseInt(gamepad["id"]["substr"](product_str_index, 4), 16);
+    }
+    let id_split = gamepad["id"]["split"]("-");
+    if (id_split["length"] > 1 && !isNaN(parseInt(id_split[1], 16))) {
+      return parseInt(id_split[1], 16);
+    }
+    return 0;
+  },
+  725662: $0 => {
+    let gamepad = navigator["getGamepads"]()[$0];
+    if (!gamepad) {
+      return 0;
+    }
+    return gamepad["id"]["toLowerCase"]()["indexOf"]("xinput") >= 0;
+  },
+  725805: () => {
+    const os = ([ "Android", "Linux", "iPhone", "Macintosh", "Windows" ]);
+    const ua = navigator["userAgent"];
+    for (let i = 0; i < os.length; i++) {
+      if (ua["indexOf"](os[i]) >= 0) {
+        return i + 1;
+      }
+    }
+    return 0;
+  },
+  726015: ($0, $1, $2) => {
+    let gamepad = navigator["getGamepads"]()[$0];
+    if (!gamepad) {
+      stringToUTF8("\0", $1, $2);
+      return;
+    }
+    let id = gamepad["id"];
+    let output = id;
+    if (id["indexOf"](" (STANDARD GAMEPAD") > 0) {
+      output = id["substr"](0, id["indexOf"](" (STANDARD GAMEPAD"));
+    } else if (id["indexOf"](" (Vendor:") > 0) {
+      output = id["substr"](0, id["indexOf"](" (Vendor:"));
+    } else if (id["indexOf"](" (XInput") > 0) {
+      output = id["substr"](0, id["indexOf"](" (XInput"));
+    }
+    let id_split = id["split"]("-");
+    if (id_split["length"] > 1 && !isNaN(parseInt(id_split[0], 16))) {
+      let start = id["indexOf"]("-", id["indexOf"]("-") + 1) + 1;
+      output = id["substr"](start);
+    }
+    stringToUTF8(output.trim(), $1, $2);
+  },
+  726693: $0 => {
+    let gamepad = navigator["getGamepads"]()[$0];
+    if (!gamepad || !gamepad["vibrationActuator"]) {
+      return false;
+    }
+    return true;
+  },
+  726821: ($0, $1, $2, $3, $4) => {
+    let gamepad = navigator["getGamepads"]()[$0];
+    if (!gamepad) {
+      return false;
     }
     gamepad["vibrationActuator"]["playEffect"]("dual-rumble", {
       "startDelay": 0,
       "duration": 3e3,
       "weakMagnitude": $1 / 65535,
-      "strongMagnitude": $2 / 65535
+      "strongMagnitude": $2 / 65535,
+      "leftTrigger": $3 / 65535,
+      "rightTrigger": $4 / 65535
     });
-    return 1;
+    return true;
   },
-  715972: ($0, $1) => {
+  727134: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -10264,16 +10353,18 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  716680: ($0, $1, $2, $3) => {
+  727842: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
     var canvasId = UTF8ToString($3);
     var canvas = document.querySelector(canvasId);
-    if (!Module["SDL3"]) Module["SDL3"] = {};
     var SDL3 = Module["SDL3"];
     if (SDL3.ctxCanvas !== canvas) {
       SDL3.ctx = Browser.createContext(canvas, false, true);
+      if (!SDL3.ctx) {
+        return false;
+      }
       SDL3.ctxCanvas = canvas;
     }
     if (SDL3.w !== w || SDL3.h !== h || SDL3.imageCtx !== SDL3.ctx) {
@@ -10284,46 +10375,42 @@ var ASM_CONSTS = {
     }
     var data = SDL3.image.data;
     var src = pixels / 4;
-    var num;
     if (SDL3.data32Data !== data) {
       SDL3.data32 = new Int32Array(data.buffer);
-      SDL3.data8 = new Uint8Array(data.buffer);
       SDL3.data32Data = data;
     }
     var data32 = SDL3.data32;
-    num = data32.length;
-    data32.set(HEAP32.subarray(src, src + num));
-    var data8 = SDL3.data8;
-    var i = 3;
-    var j = i + 4 * num;
-    if (num % 8 == 0) {
-      while (i < j) {
-        data8[i] = 255;
-        i = i + 4 | 0;
-        data8[i] = 255;
-        i = i + 4 | 0;
-        data8[i] = 255;
-        i = i + 4 | 0;
-        data8[i] = 255;
-        i = i + 4 | 0;
-        data8[i] = 255;
-        i = i + 4 | 0;
-        data8[i] = 255;
-        i = i + 4 | 0;
-        data8[i] = 255;
-        i = i + 4 | 0;
-        data8[i] = 255;
-        i = i + 4 | 0;
-      }
-    } else {
-      while (i < j) {
-        data8[i] = 255;
-        i = i + 4 | 0;
-      }
-    }
+    data32.set(HEAP32.subarray(src, src + data32.length));
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
+    return true;
   },
-  717909: ($0, $1, $2, $3, $4) => {
+  728591: () => {
+    var SDL3 = Module["SDL3"];
+    SDL3["mouse_x"] = 0;
+    SDL3["mouse_y"] = 0;
+    SDL3["mouse_buttons"] = [];
+    for (var i = 0; i < 5; ++i) {
+      SDL3["mouse_buttons"][i] = false;
+    }
+    document.addEventListener("mousemove", function(e) {
+      var SDL3 = Module["SDL3"];
+      SDL3["mouse_x"] = e.clientX;
+      SDL3["mouse_y"] = e.clientY;
+    });
+    document.addEventListener("mousedown", function(e) {
+      var SDL3 = Module["SDL3"];
+      if (0 <= e.button && e.button < SDL3["mouse_buttons"].length) {
+        SDL3["mouse_buttons"][e.button] = true;
+      }
+    });
+    document.addEventListener("mouseup", function(e) {
+      var SDL3 = Module["SDL3"];
+      if (0 <= e.button && e.button < SDL3["mouse_buttons"].length) {
+        SDL3["mouse_buttons"][e.button] = false;
+      }
+    });
+  },
+  729279: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -10344,38 +10431,75 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  718567: $0 => {
+  729937: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  718650: () => {
+  730020: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  718719: ($0, $1, $2) => {
-    var target = document.querySelector(UTF8ToString($1));
-    if (target) {
-      var data = $0;
-      if (typeof (Module["SDL3"]) === "undefined") {
-        Module["SDL3"] = {};
+  730089: () => Module["SDL3"]["mouse_x"],
+  730127: () => Module["SDL3"]["mouse_y"],
+  730165: $0 => Module["SDL3"]["mouse_buttons"][$0],
+  730213: $0 => {
+    var data = $0;
+    if (document.sdlEventHandlerLockKeysCheck) {
+      document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
+    }
+    document.sdlEventHandlerLockKeysCheck = function(event) {
+      if ((event.key != "CapsLock") && (event.key != "NumLock") && (event.key != "ScrollLock")) {
+        _Emscripten_HandleLockKeysCheck(Module["SDL3"].JSVarToCPtr(data), event.getModifierState("CapsLock"), event.getModifierState("NumLock"), event.getModifierState("ScrollLock"));
       }
-      var SDL3 = Module["SDL3"];
-      var makePointerEventCStruct = function(event) {
-        var ptr = 0;
-        if (event.pointerType == "pen") {
-          ptr = _SDL_malloc($2);
-          if (ptr != 0) {
-            var rect = target.getBoundingClientRect();
-            var idx = ptr >> 2;
-            HEAP32[idx++] = event.pointerId;
-            HEAP32[idx++] = (typeof (event.button) !== "undefined") ? event.button : -1;
-            HEAP32[idx++] = event.buttons;
-            HEAPF32[idx++] = event.movementX;
-            HEAPF32[idx++] = event.movementY;
-            HEAPF32[idx++] = event.clientX - rect.left;
-            HEAPF32[idx++] = event.clientY - rect.top;
+    };
+    document.addEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
+  },
+  730767: () => {
+    document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
+  },
+  730851: $0 => {
+    var target = document;
+    if (target) {
+      target.sdlEventHandlerMouseButtonUpGlobal = function(event) {
+        var SDL3 = Module["SDL3"];
+        var d = SDL3.makePointerEventCStruct(0, 0, event);
+        if (d != 0) {
+          _Emscripten_HandleMouseButtonUpGlobal(SDL3.JSVarToCPtr($0), d);
+          _SDL_free(d);
+        }
+      };
+      target.addEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
+    }
+  },
+  731212: $0 => {
+    var SDL3 = Module["SDL3"];
+    if (SDL3.makePointerEventCStruct === undefined) {
+      SDL3.makePointerEventCStruct = function(left, top, event) {
+        var ptrtype = 0;
+        if (event.pointerType == "mouse") {
+          ptrtype = 1;
+        } else if (event.pointerType == "touch") {
+          ptrtype = 2;
+        } else if (event.pointerType == "pen") {
+          ptrtype = 3;
+        } else {
+          return 0;
+        }
+        var ptr = _SDL_malloc($0);
+        if (ptr != 0) {
+          var idx = SDL3.CPtrToHeap32Index(ptr);
+          HEAP32[idx++] = ptrtype;
+          HEAP32[idx++] = event.pointerId;
+          HEAP32[idx++] = (typeof (event.button) !== "undefined") ? event.button : -1;
+          HEAP32[idx++] = event.buttons;
+          HEAP32[idx++] = (event.type == "pointerdown") ? 1 : 0;
+          HEAPF32[idx++] = event.movementX;
+          HEAPF32[idx++] = event.movementY;
+          HEAPF32[idx++] = event.clientX - left;
+          HEAPF32[idx++] = event.clientY - top;
+          if (ptrtype == 3) {
             HEAPF32[idx++] = event.pressure;
             HEAPF32[idx++] = event.tangentialPressure;
             HEAPF32[idx++] = event.tiltX;
@@ -10385,42 +10509,76 @@ var ASM_CONSTS = {
         }
         return ptr;
       };
-      SDL3.eventHandlerPointerEnter = function(event) {
-        var d = makePointerEventCStruct(event);
-        if (d != 0) {
-          _Emscripten_HandlePointerEnter(data, d);
-          _SDL_free(d);
-        }
-      };
-      target.addEventListener("pointerenter", SDL3.eventHandlerPointerEnter);
-      SDL3.eventHandlerPointerLeave = function(event) {
-        var d = makePointerEventCStruct(event);
-        if (d != 0) {
-          _Emscripten_HandlePointerLeave(data, d);
-          _SDL_free(d);
-        }
-      };
-      target.addEventListener("pointerleave", SDL3.eventHandlerPointerLeave);
-      target.addEventListener("pointercancel", SDL3.eventHandlerPointerLeave);
-      SDL3.eventHandlerPointerGeneric = function(event) {
-        var d = makePointerEventCStruct(event);
-        if (d != 0) {
-          _Emscripten_HandlePointerGeneric(data, d);
-          _SDL_free(d);
-        }
-      };
-      target.addEventListener("pointerdown", SDL3.eventHandlerPointerGeneric);
-      target.addEventListener("pointerup", SDL3.eventHandlerPointerGeneric);
-      target.addEventListener("pointermove", SDL3.eventHandlerPointerGeneric);
     }
   },
-  720512: ($0, $1, $2) => {
+  732204: $0 => {
+    var id = UTF8ToString($0);
+    try {
+      var canvas = document.querySelector(id);
+      if (canvas) {
+        return canvas === document.activeElement;
+      }
+    } catch (e) {}
+    return false;
+  },
+  732370: () => document.hasFocus(),
+  732402: () => {
+    var target = document;
+    if (target) {
+      target.removeEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
+      target.sdlEventHandlerMouseButtonUpGlobal = undefined;
+    }
+  },
+  732584: () => document.body.clientWidth,
+  732622: () => document.body.clientHeight,
+  732661: () => window.innerWidth,
+  732691: () => window.innerHeight,
+  732722: () => window.outerWidth,
+  732752: () => window.outerHeight,
+  732783: () => window.pageXOffset,
+  732814: () => window.pageYOffset,
+  732845: ($0, $1) => {
+    var target = document.querySelector(UTF8ToString($1));
+    if (target) {
+      var SDL3 = Module["SDL3"];
+      var data = $0;
+      target.sdlEventHandlerPointerEnter = function(event) {
+        var rect = target.getBoundingClientRect();
+        var d = SDL3.makePointerEventCStruct(rect.left, rect.top, event);
+        if (d != 0) {
+          _Emscripten_HandlePointerEnter(SDL3.JSVarToCPtr(data), d);
+          _SDL_free(d);
+        }
+      };
+      target.sdlEventHandlerPointerLeave = function(event) {
+        var rect = target.getBoundingClientRect();
+        var d = SDL3.makePointerEventCStruct(rect.left, rect.top, event);
+        if (d != 0) {
+          _Emscripten_HandlePointerLeave(SDL3.JSVarToCPtr(data), d);
+          _SDL_free(d);
+        }
+      };
+      target.sdlEventHandlerPointerGeneric = function(event) {
+        var rect = target.getBoundingClientRect();
+        var d = SDL3.makePointerEventCStruct(rect.left, rect.top, event);
+        if (d != 0) {
+          _Emscripten_HandlePointerGeneric(SDL3.JSVarToCPtr(data), d);
+          _SDL_free(d);
+        }
+      };
+      target.style.touchAction = "none";
+      target.addEventListener("pointerenter", target.sdlEventHandlerPointerEnter);
+      target.addEventListener("pointerleave", target.sdlEventHandlerPointerLeave);
+      target.addEventListener("pointercancel", target.sdlEventHandlerPointerLeave);
+      target.addEventListener("pointerdown", target.sdlEventHandlerPointerGeneric);
+      target.addEventListener("pointermove", target.sdlEventHandlerPointerGeneric);
+      target.addEventListener("pointerup", target.sdlEventHandlerPointerGeneric);
+    }
+  },
+  734233: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
-      if (typeof (Module["SDL3"]) === "undefined") {
-        Module["SDL3"] = {};
-      }
       var SDL3 = Module["SDL3"];
       var makeDropEventCStruct = function(event) {
         var ptr = 0;
@@ -10443,15 +10601,19 @@ var ASM_CONSTS = {
       };
       target.addEventListener("dragover", SDL3.eventHandlerDropDragover);
       SDL3.drop_count = 0;
-      FS.mkdir("/tmp/filedrop");
+      try {
+        FS.mkdir("/tmp/filedrop");
+      } catch (e) {}
       SDL3.eventHandlerDropDrop = function(event) {
         event.preventDefault();
         if (event.dataTransfer.types.includes("text/plain")) {
           let plain_text = stringToNewUTF8(event.dataTransfer.getData("text/plain"));
           _Emscripten_SendDragTextEvent(data, plain_text);
-          _free(plain_text);
+          _Emscripten_force_free(plain_text);
         } else if (event.dataTransfer.types.includes("Files")) {
-          for (let i = 0; i < event.dataTransfer.files.length; i++) {
+          let files_read = 0;
+          const files_to_read = event.dataTransfer.files.length;
+          for (let i = 0; i < files_to_read; i++) {
             const file = event.dataTransfer.files.item(i);
             const file_reader = new FileReader;
             file_reader.readAsArrayBuffer(file);
@@ -10461,14 +10623,25 @@ var ASM_CONSTS = {
               const fs_filepath = `${fs_dropdir}/${file.name}`;
               const c_fs_filepath = stringToNewUTF8(fs_filepath);
               const contents_array8 = new Uint8Array(event.target.result);
-              FS.mkdir(fs_dropdir);
-              var stream = FS.open(fs_filepath, "w");
-              FS.write(stream, contents_array8, 0, contents_array8.length, 0);
-              FS.close(stream);
-              _Emscripten_SendDragFileEvent(data, c_fs_filepath);
-              _free(c_fs_filepath);
-              _Emscripten_SendDragCompleteEvent(data);
+              try {
+                FS.mkdir(fs_dropdir);
+                var stream = FS.open(fs_filepath, "w");
+                FS.write(stream, contents_array8, 0, contents_array8.length, 0);
+                FS.close(stream);
+                _Emscripten_SendDragFileEvent(data, c_fs_filepath);
+              } catch (e) {}
+              _Emscripten_force_free(c_fs_filepath);
+              onFileRead();
             };
+            file_reader.onerror = function(event) {
+              onFileRead();
+            };
+          }
+          function onFileRead() {
+            ++files_read;
+            if (files_read === files_to_read) {
+              _Emscripten_SendDragCompleteEvent(data);
+            }
           }
         }
         _Emscripten_SendDragCompleteEvent(data);
@@ -10482,7 +10655,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  722665: $0 => {
+  736600: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10498,22 +10671,22 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  723495: $0 => {
+  737430: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
-      var SDL3 = Module["SDL3"];
-      target.removeEventListener("pointerenter", SDL3.eventHandlerPointerEnter);
-      target.removeEventListener("pointerleave", SDL3.eventHandlerPointerLeave);
-      target.removeEventListener("pointercancel", SDL3.eventHandlerPointerLeave);
-      target.removeEventListener("pointerdown", SDL3.eventHandlerPointerGeneric);
-      target.removeEventListener("pointerup", SDL3.eventHandlerPointerGeneric);
-      target.removeEventListener("pointermove", SDL3.eventHandlerPointerGeneric);
-      SDL3.eventHandlerPointerEnter = undefined;
-      SDL3.eventHandlerPointerLeave = undefined;
-      SDL3.eventHandlerPointerGeneric = undefined;
+      target.removeEventListener("pointerenter", target.sdlEventHandlerPointerEnter);
+      target.removeEventListener("pointerleave", target.sdlEventHandlerPointerLeave);
+      target.removeEventListener("pointercancel", target.sdlEventHandlerPointerLeave);
+      target.removeEventListener("pointerdown", target.sdlEventHandlerPointerGeneric);
+      target.removeEventListener("pointermove", target.sdlEventHandlerPointerGeneric);
+      target.removeEventListener("pointerup", target.sdlEventHandlerPointerGeneric);
+      target.style.touchAction = "";
+      target.sdlEventHandlerPointerEnter = undefined;
+      target.sdlEventHandlerPointerLeave = undefined;
+      target.sdlEventHandlerPointerGeneric = undefined;
     }
   },
-  724180: () => {
+  738164: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -10525,7 +10698,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  724389: () => {
+  738373: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -10533,21 +10706,76 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  724642: () => window.innerWidth,
-  724672: () => window.innerHeight,
-  724703: $0 => {
+  738626: () => window.innerWidth,
+  738656: () => window.innerHeight,
+  738687: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  724812: () => {
+  738796: ($0, $1) => {
+    var pngData = HEAPU8.buffer instanceof ArrayBuffer ? HEAPU8.subarray($0, $0 + $1) : HEAPU8.slice($0, $0 + $1);
+    var blob = new Blob([ pngData ], {
+      type: "image/png"
+    });
+    var url = URL.createObjectURL(blob);
+    var link = document.querySelector("link[rel~='icon']");
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      link.type = "image/png";
+      document.head.appendChild(link);
+    }
+    if (link.href && link.href.startsWith("blob:")) {
+      URL.revokeObjectURL(link.href);
+    }
+    link.href = url;
+  },
+  739289: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  724886: () => {
-    if (window.matchMedia) {
-      if (typeof (Module["SDL3"]) === "undefined") {
-        Module["SDL3"] = {};
+  739363: () => window.innerWidth,
+  739393: () => window.innerHeight,
+  739424: $0 => {
+    var canvas = document.querySelector(UTF8ToString($0));
+    canvas.SDL3_original_position = canvas.style.position;
+    canvas.SDL3_original_top = canvas.style.top;
+    canvas.SDL3_original_left = canvas.style.left;
+    var div = document.createElement("div");
+    div.id = "SDL3_fill_document_background_elements";
+    div.SDL3_canvas = canvas;
+    div.SDL3_canvas_parent = canvas.parentNode;
+    div.SDL3_canvas_nextsib = canvas.nextSibling;
+    var children = Array.from(document.body.children);
+    for (var child of children) {
+      div.appendChild(child);
+    }
+    document.body.appendChild(div);
+    div.style.display = "none";
+    document.body.appendChild(canvas);
+    canvas.style.position = "fixed";
+    canvas.style.top = "0";
+    canvas.style.left = "0";
+  },
+  740122: () => {
+    var div = document.getElementById("SDL3_fill_document_background_elements");
+    if (div) {
+      if (div.SDL3_canvas_nextsib) {
+        div.SDL3_canvas_parent.insertBefore(div.SDL3_canvas, div.SDL3_canvas_nextsib);
+      } else {
+        div.SDL3_canvas_parent.appendChild(div.SDL3_canvas);
       }
+      while (div.firstChild) {
+        document.body.insertBefore(div.firstChild, div);
+      }
+      div.SDL3_canvas.style.position = div.SDL3_canvas.SDL3_original_position;
+      div.SDL3_canvas.style.top = div.SDL3_canvas.SDL3_original_top;
+      div.SDL3_canvas.style.left = div.SDL3_canvas.SDL3_original_left;
+      div.remove();
+    }
+  },
+  740681: () => {
+    if (window.matchMedia) {
       var SDL3 = Module["SDL3"];
       SDL3.eventHandlerThemeChanged = function(event) {
         _Emscripten_SendSystemThemeChangedEvent();
@@ -10556,14 +10784,98 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  725277: $0 => {
+  741003: ($0, $1, $2, $3, $4) => {
+    var title = UTF8ToString($0);
+    var message = UTF8ToString($1);
+    var background = UTF8ToString($2);
+    var color = UTF8ToString($3);
+    var id = UTF8ToString($4);
+    var dialog = document.createElement("dialog");
+    dialog.classList.add("SDL3_messagebox");
+    dialog.id = id;
+    dialog.style.color = color;
+    dialog.style.backgroundColor = background;
+    document.body.append(dialog);
+    var h1 = document.createElement("h1");
+    h1.innerText = title;
+    dialog.append(h1);
+    var p = document.createElement("p");
+    p.innerText = message;
+    dialog.append(p);
+    dialog.showModal();
+  },
+  741544: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+    var dialog_id = UTF8ToString($0);
+    var text = UTF8ToString($1);
+    var responseId = $2;
+    var clickOnReturn = $3;
+    var clickOnEscape = $4;
+    var border = UTF8ToString($5);
+    var background = UTF8ToString($6);
+    var hovered = UTF8ToString($7);
+    var dialog = document.getElementById(dialog_id);
+    if (!dialog) {
+      return false;
+    }
+    var button = document.createElement("button");
+    button.innerText = text;
+    button.style.borderColor = border;
+    button.style.backgroundColor = background;
+    dialog.addEventListener("keydown", function(e) {
+      if (clickOnReturn && e.key === "Enter") {
+        e.preventDefault();
+        button.click();
+      } else if (clickOnEscape && e.key === "Escape") {
+        e.preventDefault();
+        button.click();
+      }
+    });
+    dialog.addEventListener("cancel", function(e) {
+      e.preventDefault();
+    });
+    button.onmouseenter = function(e) {
+      button.style.backgroundColor = hovered;
+    };
+    button.onmouseleave = function(e) {
+      button.style.backgroundColor = background;
+    };
+    button.onclick = function(e) {
+      dialog.close(responseId);
+    };
+    dialog.append(button);
+    return true;
+  },
+  742553: $0 => {
+    var dialog_id = UTF8ToString($0);
+    var dialog = document.getElementById(dialog_id);
+    if (!dialog) {
+      return false;
+    }
+    return dialog.open;
+  },
+  742691: $0 => {
+    var dialog_id = UTF8ToString($0);
+    var dialog = document.getElementById(dialog_id);
+    if (!dialog) {
+      return 0;
+    }
+    try {
+      return parseInt(dialog.returnValue);
+    } catch (e) {
+      return 0;
+    }
+  },
+  742873: ($0, $1) => {
+    alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
+  },
+  742930: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  725317: () => {
+  742970: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  725434: $0 => {
+  743087: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
@@ -10638,15 +10950,23 @@ var _SDL_malloc = Module["_SDL_malloc"] = makeInvalidEarlyAccess("_SDL_malloc");
 
 var _SDL_calloc = Module["_SDL_calloc"] = makeInvalidEarlyAccess("_SDL_calloc");
 
+var _Emscripten_force_free = Module["_Emscripten_force_free"] = makeInvalidEarlyAccess("_Emscripten_force_free");
+
 var _SDL_realloc = Module["_SDL_realloc"] = makeInvalidEarlyAccess("_SDL_realloc");
 
 var _strerror = makeInvalidEarlyAccess("_strerror");
+
+var _SDLEmscriptenCameraPermissionOutcome = Module["_SDLEmscriptenCameraPermissionOutcome"] = makeInvalidEarlyAccess("_SDLEmscriptenCameraPermissionOutcome");
+
+var _SDLEmscriptenThreadIterate = Module["_SDLEmscriptenThreadIterate"] = makeInvalidEarlyAccess("_SDLEmscriptenThreadIterate");
 
 var _Emscripten_HandlePointerEnter = Module["_Emscripten_HandlePointerEnter"] = makeInvalidEarlyAccess("_Emscripten_HandlePointerEnter");
 
 var _Emscripten_HandlePointerLeave = Module["_Emscripten_HandlePointerLeave"] = makeInvalidEarlyAccess("_Emscripten_HandlePointerLeave");
 
 var _Emscripten_HandlePointerGeneric = Module["_Emscripten_HandlePointerGeneric"] = makeInvalidEarlyAccess("_Emscripten_HandlePointerGeneric");
+
+var _Emscripten_HandleMouseButtonUpGlobal = Module["_Emscripten_HandleMouseButtonUpGlobal"] = makeInvalidEarlyAccess("_Emscripten_HandleMouseButtonUpGlobal");
 
 var _Emscripten_SendDragEvent = Module["_Emscripten_SendDragEvent"] = makeInvalidEarlyAccess("_Emscripten_SendDragEvent");
 
@@ -10655,6 +10975,8 @@ var _Emscripten_SendDragCompleteEvent = Module["_Emscripten_SendDragCompleteEven
 var _Emscripten_SendDragTextEvent = Module["_Emscripten_SendDragTextEvent"] = makeInvalidEarlyAccess("_Emscripten_SendDragTextEvent");
 
 var _Emscripten_SendDragFileEvent = Module["_Emscripten_SendDragFileEvent"] = makeInvalidEarlyAccess("_Emscripten_SendDragFileEvent");
+
+var _Emscripten_HandleLockKeysCheck = Module["_Emscripten_HandleLockKeysCheck"] = makeInvalidEarlyAccess("_Emscripten_HandleLockKeysCheck");
 
 var _Emscripten_SendSystemThemeChangedEvent = Module["_Emscripten_SendSystemThemeChangedEvent"] = makeInvalidEarlyAccess("_Emscripten_SendSystemThemeChangedEvent");
 
@@ -10709,15 +11031,20 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["__main_argc_argv"] !== "undefined", "missing Wasm export: __main_argc_argv");
   assert(typeof wasmExports["SDL_malloc"] !== "undefined", "missing Wasm export: SDL_malloc");
   assert(typeof wasmExports["SDL_calloc"] !== "undefined", "missing Wasm export: SDL_calloc");
+  assert(typeof wasmExports["Emscripten_force_free"] !== "undefined", "missing Wasm export: Emscripten_force_free");
   assert(typeof wasmExports["SDL_realloc"] !== "undefined", "missing Wasm export: SDL_realloc");
   assert(typeof wasmExports["strerror"] !== "undefined", "missing Wasm export: strerror");
+  assert(typeof wasmExports["SDLEmscriptenCameraPermissionOutcome"] !== "undefined", "missing Wasm export: SDLEmscriptenCameraPermissionOutcome");
+  assert(typeof wasmExports["SDLEmscriptenThreadIterate"] !== "undefined", "missing Wasm export: SDLEmscriptenThreadIterate");
   assert(typeof wasmExports["Emscripten_HandlePointerEnter"] !== "undefined", "missing Wasm export: Emscripten_HandlePointerEnter");
   assert(typeof wasmExports["Emscripten_HandlePointerLeave"] !== "undefined", "missing Wasm export: Emscripten_HandlePointerLeave");
   assert(typeof wasmExports["Emscripten_HandlePointerGeneric"] !== "undefined", "missing Wasm export: Emscripten_HandlePointerGeneric");
+  assert(typeof wasmExports["Emscripten_HandleMouseButtonUpGlobal"] !== "undefined", "missing Wasm export: Emscripten_HandleMouseButtonUpGlobal");
   assert(typeof wasmExports["Emscripten_SendDragEvent"] !== "undefined", "missing Wasm export: Emscripten_SendDragEvent");
   assert(typeof wasmExports["Emscripten_SendDragCompleteEvent"] !== "undefined", "missing Wasm export: Emscripten_SendDragCompleteEvent");
   assert(typeof wasmExports["Emscripten_SendDragTextEvent"] !== "undefined", "missing Wasm export: Emscripten_SendDragTextEvent");
   assert(typeof wasmExports["Emscripten_SendDragFileEvent"] !== "undefined", "missing Wasm export: Emscripten_SendDragFileEvent");
+  assert(typeof wasmExports["Emscripten_HandleLockKeysCheck"] !== "undefined", "missing Wasm export: Emscripten_HandleLockKeysCheck");
   assert(typeof wasmExports["Emscripten_SendSystemThemeChangedEvent"] !== "undefined", "missing Wasm export: Emscripten_SendSystemThemeChangedEvent");
   assert(typeof wasmExports["requestFullscreenThroughSDL"] !== "undefined", "missing Wasm export: requestFullscreenThroughSDL");
   assert(typeof wasmExports["emscripten_stack_get_end"] !== "undefined", "missing Wasm export: emscripten_stack_get_end");
@@ -10748,15 +11075,20 @@ function assignWasmExports(wasmExports) {
   _main = Module["_main"] = createExportWrapper("__main_argc_argv", wasmExports["__main_argc_argv"], 2);
   _SDL_malloc = Module["_SDL_malloc"] = createExportWrapper("SDL_malloc", wasmExports["SDL_malloc"], 1);
   _SDL_calloc = Module["_SDL_calloc"] = createExportWrapper("SDL_calloc", wasmExports["SDL_calloc"], 2);
+  _Emscripten_force_free = Module["_Emscripten_force_free"] = createExportWrapper("Emscripten_force_free", wasmExports["Emscripten_force_free"], 1);
   _SDL_realloc = Module["_SDL_realloc"] = createExportWrapper("SDL_realloc", wasmExports["SDL_realloc"], 2);
   _strerror = createExportWrapper("strerror", wasmExports["strerror"], 1);
+  _SDLEmscriptenCameraPermissionOutcome = Module["_SDLEmscriptenCameraPermissionOutcome"] = createExportWrapper("SDLEmscriptenCameraPermissionOutcome", wasmExports["SDLEmscriptenCameraPermissionOutcome"], 5);
+  _SDLEmscriptenThreadIterate = Module["_SDLEmscriptenThreadIterate"] = createExportWrapper("SDLEmscriptenThreadIterate", wasmExports["SDLEmscriptenThreadIterate"], 1);
   _Emscripten_HandlePointerEnter = Module["_Emscripten_HandlePointerEnter"] = createExportWrapper("Emscripten_HandlePointerEnter", wasmExports["Emscripten_HandlePointerEnter"], 2);
   _Emscripten_HandlePointerLeave = Module["_Emscripten_HandlePointerLeave"] = createExportWrapper("Emscripten_HandlePointerLeave", wasmExports["Emscripten_HandlePointerLeave"], 2);
   _Emscripten_HandlePointerGeneric = Module["_Emscripten_HandlePointerGeneric"] = createExportWrapper("Emscripten_HandlePointerGeneric", wasmExports["Emscripten_HandlePointerGeneric"], 2);
+  _Emscripten_HandleMouseButtonUpGlobal = Module["_Emscripten_HandleMouseButtonUpGlobal"] = createExportWrapper("Emscripten_HandleMouseButtonUpGlobal", wasmExports["Emscripten_HandleMouseButtonUpGlobal"], 2);
   _Emscripten_SendDragEvent = Module["_Emscripten_SendDragEvent"] = createExportWrapper("Emscripten_SendDragEvent", wasmExports["Emscripten_SendDragEvent"], 2);
   _Emscripten_SendDragCompleteEvent = Module["_Emscripten_SendDragCompleteEvent"] = createExportWrapper("Emscripten_SendDragCompleteEvent", wasmExports["Emscripten_SendDragCompleteEvent"], 1);
   _Emscripten_SendDragTextEvent = Module["_Emscripten_SendDragTextEvent"] = createExportWrapper("Emscripten_SendDragTextEvent", wasmExports["Emscripten_SendDragTextEvent"], 2);
   _Emscripten_SendDragFileEvent = Module["_Emscripten_SendDragFileEvent"] = createExportWrapper("Emscripten_SendDragFileEvent", wasmExports["Emscripten_SendDragFileEvent"], 2);
+  _Emscripten_HandleLockKeysCheck = Module["_Emscripten_HandleLockKeysCheck"] = createExportWrapper("Emscripten_HandleLockKeysCheck", wasmExports["Emscripten_HandleLockKeysCheck"], 4);
   _Emscripten_SendSystemThemeChangedEvent = Module["_Emscripten_SendSystemThemeChangedEvent"] = createExportWrapper("Emscripten_SendSystemThemeChangedEvent", wasmExports["Emscripten_SendSystemThemeChangedEvent"], 0);
   _requestFullscreenThroughSDL = Module["_requestFullscreenThroughSDL"] = createExportWrapper("requestFullscreenThroughSDL", wasmExports["requestFullscreenThroughSDL"], 1);
   _emscripten_stack_get_end = wasmExports["emscripten_stack_get_end"];
@@ -10811,6 +11143,7 @@ var wasmImports = {
   /** @export */ _tzset_js: __tzset_js,
   /** @export */ clock_time_get: _clock_time_get,
   /** @export */ emscripten_asm_const_double: _emscripten_asm_const_double,
+  /** @export */ emscripten_asm_const_double_sync_on_main_thread: _emscripten_asm_const_double_sync_on_main_thread,
   /** @export */ emscripten_asm_const_int: _emscripten_asm_const_int,
   /** @export */ emscripten_asm_const_int_sync_on_main_thread: _emscripten_asm_const_int_sync_on_main_thread,
   /** @export */ emscripten_asm_const_ptr: _emscripten_asm_const_ptr,
@@ -10820,9 +11153,9 @@ var wasmImports = {
   /** @export */ emscripten_err: _emscripten_err,
   /** @export */ emscripten_exit_fullscreen: _emscripten_exit_fullscreen,
   /** @export */ emscripten_exit_pointerlock: _emscripten_exit_pointerlock,
-  /** @export */ emscripten_force_exit: _emscripten_force_exit,
   /** @export */ emscripten_get_device_pixel_ratio: _emscripten_get_device_pixel_ratio,
   /** @export */ emscripten_get_element_css_size: _emscripten_get_element_css_size,
+  /** @export */ emscripten_get_fullscreen_status: _emscripten_get_fullscreen_status,
   /** @export */ emscripten_get_gamepad_status: _emscripten_get_gamepad_status,
   /** @export */ emscripten_get_heap_max: _emscripten_get_heap_max,
   /** @export */ emscripten_get_main_loop_timing: _emscripten_get_main_loop_timing,
@@ -11004,6 +11337,7 @@ var wasmImports = {
   /** @export */ emscripten_set_beforeunload_callback_on_thread: _emscripten_set_beforeunload_callback_on_thread,
   /** @export */ emscripten_set_blur_callback_on_thread: _emscripten_set_blur_callback_on_thread,
   /** @export */ emscripten_set_canvas_element_size: _emscripten_set_canvas_element_size,
+  /** @export */ emscripten_set_devicemotion_callback_on_thread: _emscripten_set_devicemotion_callback_on_thread,
   /** @export */ emscripten_set_element_css_size: _emscripten_set_element_css_size,
   /** @export */ emscripten_set_focus_callback_on_thread: _emscripten_set_focus_callback_on_thread,
   /** @export */ emscripten_set_fullscreenchange_callback_on_thread: _emscripten_set_fullscreenchange_callback_on_thread,
@@ -11014,18 +11348,9 @@ var wasmImports = {
   /** @export */ emscripten_set_keyup_callback_on_thread: _emscripten_set_keyup_callback_on_thread,
   /** @export */ emscripten_set_main_loop: _emscripten_set_main_loop,
   /** @export */ emscripten_set_main_loop_timing: _emscripten_set_main_loop_timing,
-  /** @export */ emscripten_set_mousedown_callback_on_thread: _emscripten_set_mousedown_callback_on_thread,
-  /** @export */ emscripten_set_mouseenter_callback_on_thread: _emscripten_set_mouseenter_callback_on_thread,
-  /** @export */ emscripten_set_mouseleave_callback_on_thread: _emscripten_set_mouseleave_callback_on_thread,
-  /** @export */ emscripten_set_mousemove_callback_on_thread: _emscripten_set_mousemove_callback_on_thread,
-  /** @export */ emscripten_set_mouseup_callback_on_thread: _emscripten_set_mouseup_callback_on_thread,
   /** @export */ emscripten_set_orientationchange_callback_on_thread: _emscripten_set_orientationchange_callback_on_thread,
   /** @export */ emscripten_set_pointerlockchange_callback_on_thread: _emscripten_set_pointerlockchange_callback_on_thread,
   /** @export */ emscripten_set_resize_callback_on_thread: _emscripten_set_resize_callback_on_thread,
-  /** @export */ emscripten_set_touchcancel_callback_on_thread: _emscripten_set_touchcancel_callback_on_thread,
-  /** @export */ emscripten_set_touchend_callback_on_thread: _emscripten_set_touchend_callback_on_thread,
-  /** @export */ emscripten_set_touchmove_callback_on_thread: _emscripten_set_touchmove_callback_on_thread,
-  /** @export */ emscripten_set_touchstart_callback_on_thread: _emscripten_set_touchstart_callback_on_thread,
   /** @export */ emscripten_set_visibilitychange_callback_on_thread: _emscripten_set_visibilitychange_callback_on_thread,
   /** @export */ emscripten_set_wheel_callback_on_thread: _emscripten_set_wheel_callback_on_thread,
   /** @export */ emscripten_set_window_title: _emscripten_set_window_title,
@@ -11073,6 +11398,7 @@ var wasmImports = {
   /** @export */ invoke_iiiiiiiiii,
   /** @export */ invoke_iiiiiiiiiiii,
   /** @export */ invoke_iiiiiiiiiiiii,
+  /** @export */ invoke_iiiiij,
   /** @export */ invoke_iiiij,
   /** @export */ invoke_iiij,
   /** @export */ invoke_iiijj,
@@ -11088,9 +11414,10 @@ var wasmImports = {
   /** @export */ invoke_vifi,
   /** @export */ invoke_vii,
   /** @export */ invoke_viiff,
+  /** @export */ invoke_viiffii,
   /** @export */ invoke_viii,
   /** @export */ invoke_viiif,
-  /** @export */ invoke_viiiffffii,
+  /** @export */ invoke_viiiffffiii,
   /** @export */ invoke_viiii,
   /** @export */ invoke_viiiifi,
   /** @export */ invoke_viiiii,
@@ -11576,6 +11903,17 @@ function invoke_viji(index, a1, a2, a3) {
   }
 }
 
+function invoke_viiffii(index, a1, a2, a3, a4, a5, a6) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_iiij(index, a1, a2, a3) {
   var sp = stackSave();
   try {
@@ -11631,10 +11969,10 @@ function invoke_vijjff(index, a1, a2, a3, a4, a5) {
   }
 }
 
-function invoke_viiiffffii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
+function invoke_viiiffffiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) {
   var sp = stackSave();
   try {
-    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9);
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -11668,6 +12006,17 @@ function invoke_viijii(index, a1, a2, a3, a4, a5) {
   var sp = stackSave();
   try {
     getWasmTableEntry(index)(a1, a2, a3, a4, a5);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_iiiiij(index, a1, a2, a3, a4, a5) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4, a5);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
