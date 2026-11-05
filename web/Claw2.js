@@ -695,6 +695,7 @@ Module.clawComparisonDownload = function() {
       console.warn("Using cached asset manifest:", pack, error);
     }
     manifests.set(pack, m);
+    (Module.clawAssetVersions ||= {})[pack] = m.version;
     return m;
   }
   async function file(m, f) {
@@ -9735,8 +9736,8 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  724500: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
-  724577: () => {
+  725316: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
+  725393: () => {
     const token = Module.clawComparison && Module.clawComparison.token;
     if (typeof token !== "string") return 0;
     const size = lengthBytesUTF8(token) + 1;
@@ -9744,26 +9745,26 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  724814: () => {
+  725630: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  724936: () => {
+  725752: () => {
     Module.clawHideCursor = function() {
       _clawHideCursor();
     };
   },
-  724999: () => {
+  725815: () => {
     Module.clawRedrawScreen = function() {
       _clawRedrawScreen();
     };
   },
-  725066: () => {
+  725882: () => {
     Module.clawResizeScreen = function() {
       _clawResizeScreen();
     };
     Module.clawResizeScreen();
   },
-  725160: () => {
+  725976: () => {
     Module.clawUpdateBackgroundAudio = function() {
       _clawUpdateBackgroundAudio();
     };
@@ -9779,29 +9780,29 @@ var ASM_CONSTS = {
       Module.clawUpdateBackgroundAudio();
     });
   },
-  725700: $0 => {
+  726516: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  725766: () => {
+  726582: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  725829: () => {
+  726645: () => {
     Module.setStatus("Gra została zatrzymana. Odśwież stronę, aby uruchomić ją ponownie.");
   },
-  725927: $0 => {
+  726743: $0 => {
     Module.setStatus("Błąd renderowania: " + UTF8ToString($0));
   },
-  725993: () => {
+  726809: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  726054: () => {
+  726870: () => {
     Module.clawTextShader = null;
   },
-  726088: () => {
+  726904: () => {
     Module.clawTextUniforms = {};
   },
-  726122: ($0, $1, $2, $3) => {
+  726938: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -9811,35 +9812,59 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  726275: ($0, $1, $2, $3, $4) => {
+  727091: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  726340: ($0, $1) => {
+  727156: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  726394: ($0, $1, $2) => {
+  727210: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  726453: ($0, $1) => {
+  727269: ($0, $1) => {
     Module.clawRequestLevel($0, UTF8ToString($1));
   },
-  726504: $0 => Module.clawLevels[$0].status,
-  726545: $0 => Module.clawLevels[$0].progress,
-  726588: $0 => Module.clawLevels[$0].status,
-  726629: $0 => {
+  727320: $0 => Module.clawLevels[$0].status,
+  727361: $0 => Module.clawLevels[$0].progress,
+  727404: $0 => Module.clawLevels[$0].status,
+  727445: $0 => {
     delete Module.clawLevels[$0];
   },
-  726663: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
-  726763: ($0, $1, $2, $3, $4, $5) => {
+  727479: ($0, $1) => {
+    globalThis.clawAnalytics?.end($0, $1);
+  },
+  727522: ($0, $1, $2, $3, $4, $5) => {
+    globalThis.clawAnalytics?.levelStart($0, $1, $2, $3, $4, $5);
+  },
+  727588: ($0, $1, $2) => {
+    globalThis.clawAnalytics?.complete($0, $1, $2);
+  },
+  727640: ($0, $1, $2, $3, $4) => {
+    globalThis.clawAnalytics?.checkpoint($0, $1, $2, $3, $4);
+  },
+  727702: ($0, $1, $2, $3, $4, $5, $6) => {
+    globalThis.clawAnalytics?.treasure?.($0, $1, $2, $3, $4, $5, $6);
+  },
+  727772: ($0, $1, $2, $3, $4, $5) => {
+    globalThis.clawAnalytics?.enemy?.(UTF8ToString($0), $1, $2, $3, $4, $5);
+  },
+  727849: ($0, $1) => {
+    globalThis.clawAnalytics?.progress?.($0, $1);
+  },
+  727899: ($0, $1, $2, $3, $4, $5) => {
+    globalThis.clawAnalytics?.death($0, $1, $2, $3, $4, $5);
+  },
+  727960: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
+  728060: ($0, $1, $2, $3, $4, $5) => {
     if (!Module.clawMapPointer) return;
     const point = Module.clawMapPointer($1, $2, $3, $4, $5);
     HEAPF32[$0 >> 2] = point.x;
     HEAPF32[($0 >> 2) + 1] = point.y;
   },
-  726922: () => {
+  728219: () => {
     Module.clawPaletteShader = null;
   },
-  726957: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  728254: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     try {
       Module.clawRenderPalette($0, $1, $2, $3, $4, $5, $6, $7);
       return 1;
@@ -9849,54 +9874,57 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  727128: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  727191: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  727254: $0 => {
+  728425: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  728488: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  728551: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  727302: () => !!globalThis.clawDiscordActivity,
-  727347: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
-  727414: () => {
+  728599: () => !!globalThis.clawDiscordActivity,
+  728644: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
+  728711: () => {
     Module.clawQuit();
   },
-  727437: () => Module.clawTouchMode ? 1 : 0,
-  727478: () => Module.clawTouchSettings.enabled(),
-  727525: () => Module.clawTouchSettings.style(),
-  727570: () => Module.clawTouchSettings.size(),
-  727614: () => {
+  728734: () => Module.clawTouchMode ? 1 : 0,
+  728775: ($0, $1, $2) => {
+    globalThis.clawAnalytics?.menu(UTF8ToString($0), UTF8ToString($1), $2);
+  },
+  728851: () => Module.clawTouchSettings.enabled(),
+  728898: () => Module.clawTouchSettings.style(),
+  728943: () => Module.clawTouchSettings.size(),
+  728987: () => {
     Module.clawTouchSettings.toggle();
   },
-  727653: () => {
+  729026: () => {
     Module.clawTouchSettings.cycleStyle();
   },
-  727696: () => {
+  729069: () => {
     Module.clawTouchSettings.cycleSize();
   },
-  727738: $0 => Module.clawTouchSettings.action($0),
-  727786: $0 => {
+  729111: $0 => Module.clawTouchSettings.action($0),
+  729159: $0 => {
     Module.clawTouchSettings.toggleAction($0);
   },
-  727833: () => {
+  729206: () => {
     Module.clawTouchSettings.reorganize();
   },
-  727876: () => {
+  729249: () => {
     Module.clawTouchSettings.finishReorganizing();
   },
-  727927: () => {
+  729300: () => {
     Module.clawTouchSettings.resetPositions();
   },
-  727974: () => {
+  729347: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  728096: () => Module.clawTouchMode ? 1 : 0,
-  728137: () => {
+  729469: () => Module.clawTouchMode ? 1 : 0,
+  729510: () => {
     if (Module.clawUpdateBackgroundAudio) Module.clawUpdateBackgroundAudio();
   },
-  728215: () => Module.clawTouchActions || 0,
-  728256: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
-  728324: () => {
+  729588: () => Module.clawTouchActions || 0,
+  729629: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
+  729697: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9912,7 +9940,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  728638: $0 => {
+  730011: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -9920,13 +9948,13 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  728853: () => {
+  730226: () => {
     Module["SDL3"].dummy_audio = {};
     Module["SDL3"].dummy_audio.timers = [];
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  729030: ($0, $1, $2, $3, $4) => {
+  730403: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -9935,14 +9963,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  729222: $0 => {
+  730595: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  729353: () => {
+  730726: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -9950,13 +9978,13 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  729500: () => {
+  730873: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     }
     return false;
   },
-  729654: () => {
+  731027: () => {
     var SDL3 = Module["SDL3"];
     if (typeof (SDL3.audio_playback) === "undefined") {
       SDL3.audio_playback = {};
@@ -9978,8 +10006,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  730233: () => Module["SDL3"].audioContext.sampleRate,
-  730284: ($0, $1, $2, $3) => {
+  731606: () => Module["SDL3"].audioContext.sampleRate,
+  731657: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10016,7 +10044,7 @@ var ASM_CONSTS = {
       }).then(have_microphone).catch(no_microphone);
     }
   },
-  731975: ($0, $1, $2, $3) => {
+  733348: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var playback = SDL3.audio_playback;
     playback.callbackGeneration = (playback.callbackGeneration || 0) + 1;
@@ -10056,7 +10084,7 @@ var ASM_CONSTS = {
       playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  733510: $0 => {
+  734883: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10091,7 +10119,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  734739: ($0, $1) => {
+  736112: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var buf = SDL3.CPtrToHeap32Index($0);
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -10105,7 +10133,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  735272: ($0, $1) => {
+  736645: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -10124,11 +10152,11 @@ var ASM_CONSTS = {
       }
     }
   },
-  735899: () => {
+  737272: () => {
     Module["SDL3"].camera = {};
   },
-  735931: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  735990: ($0, $1, $2, $3, $4) => {
+  737304: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  737363: ($0, $1, $2, $3, $4) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -10202,7 +10230,7 @@ var ASM_CONSTS = {
       outcome(device, 0, 0, 0, 0);
     });
   },
-  738296: () => {
+  739669: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -10210,7 +10238,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  738547: ($0, $1, $2) => {
+  739920: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -10223,19 +10251,19 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  738925: () => {
+  740298: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  739012: $0 => {
+  740385: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"] || !gamepad["vibrationActuator"]["effects"] || !gamepad["vibrationActuator"]["effects"]["includes"]("trigger-rumble")) {
       return false;
     }
     return true;
   },
-  739258: $0 => {
+  740631: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10251,7 +10279,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  739723: $0 => {
+  741096: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10267,14 +10295,14 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  740195: $0 => {
+  741568: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
     }
     return gamepad["id"]["toLowerCase"]()["indexOf"]("xinput") >= 0;
   },
-  740338: () => {
+  741711: () => {
     const os = ([ "Android", "Linux", "iPhone", "Macintosh", "Windows" ]);
     const ua = navigator["userAgent"];
     for (let i = 0; i < os.length; i++) {
@@ -10284,7 +10312,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  740548: ($0, $1, $2) => {
+  741921: ($0, $1, $2) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       stringToUTF8("\0", $1, $2);
@@ -10306,14 +10334,14 @@ var ASM_CONSTS = {
     }
     stringToUTF8(output.trim(), $1, $2);
   },
-  741226: $0 => {
+  742599: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"]) {
       return false;
     }
     return true;
   },
-  741354: ($0, $1, $2, $3, $4) => {
+  742727: ($0, $1, $2, $3, $4) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return false;
@@ -10328,7 +10356,7 @@ var ASM_CONSTS = {
     });
     return true;
   },
-  741667: ($0, $1) => {
+  743040: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -10362,7 +10390,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  742375: ($0, $1, $2, $3) => {
+  743748: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -10393,7 +10421,7 @@ var ASM_CONSTS = {
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
     return true;
   },
-  743124: () => {
+  744497: () => {
     var SDL3 = Module["SDL3"];
     SDL3["mouse_x"] = 0;
     SDL3["mouse_y"] = 0;
@@ -10419,7 +10447,7 @@ var ASM_CONSTS = {
       }
     });
   },
-  743812: ($0, $1, $2, $3, $4) => {
+  745185: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -10440,20 +10468,20 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  744470: $0 => {
+  745843: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  744553: () => {
+  745926: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  744622: () => Module["SDL3"]["mouse_x"],
-  744660: () => Module["SDL3"]["mouse_y"],
-  744698: $0 => Module["SDL3"]["mouse_buttons"][$0],
-  744746: $0 => {
+  745995: () => Module["SDL3"]["mouse_x"],
+  746033: () => Module["SDL3"]["mouse_y"],
+  746071: $0 => Module["SDL3"]["mouse_buttons"][$0],
+  746119: $0 => {
     var data = $0;
     if (document.sdlEventHandlerLockKeysCheck) {
       document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
@@ -10465,10 +10493,10 @@ var ASM_CONSTS = {
     };
     document.addEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  745300: () => {
+  746673: () => {
     document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  745384: $0 => {
+  746757: $0 => {
     var target = document;
     if (target) {
       target.sdlEventHandlerMouseButtonUpGlobal = function(event) {
@@ -10482,7 +10510,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
     }
   },
-  745745: $0 => {
+  747118: $0 => {
     var SDL3 = Module["SDL3"];
     if (SDL3.makePointerEventCStruct === undefined) {
       SDL3.makePointerEventCStruct = function(left, top, event) {
@@ -10520,7 +10548,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  746737: $0 => {
+  748110: $0 => {
     var id = UTF8ToString($0);
     try {
       var canvas = document.querySelector(id);
@@ -10530,23 +10558,23 @@ var ASM_CONSTS = {
     } catch (e) {}
     return false;
   },
-  746903: () => document.hasFocus(),
-  746935: () => {
+  748276: () => document.hasFocus(),
+  748308: () => {
     var target = document;
     if (target) {
       target.removeEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
       target.sdlEventHandlerMouseButtonUpGlobal = undefined;
     }
   },
-  747117: () => document.body.clientWidth,
-  747155: () => document.body.clientHeight,
-  747194: () => window.innerWidth,
-  747224: () => window.innerHeight,
-  747255: () => window.outerWidth,
-  747285: () => window.outerHeight,
-  747316: () => window.pageXOffset,
-  747347: () => window.pageYOffset,
-  747378: ($0, $1) => {
+  748490: () => document.body.clientWidth,
+  748528: () => document.body.clientHeight,
+  748567: () => window.innerWidth,
+  748597: () => window.innerHeight,
+  748628: () => window.outerWidth,
+  748658: () => window.outerHeight,
+  748689: () => window.pageXOffset,
+  748720: () => window.pageYOffset,
+  748751: ($0, $1) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10584,7 +10612,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerPointerGeneric);
     }
   },
-  748766: ($0, $1, $2) => {
+  750139: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10664,7 +10692,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  751133: $0 => {
+  752506: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10680,7 +10708,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  751963: $0 => {
+  753336: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       target.removeEventListener("pointerenter", target.sdlEventHandlerPointerEnter);
@@ -10695,7 +10723,7 @@ var ASM_CONSTS = {
       target.sdlEventHandlerPointerGeneric = undefined;
     }
   },
-  752697: () => {
+  754070: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -10707,7 +10735,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  752906: () => {
+  754279: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -10715,14 +10743,14 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  753159: () => window.innerWidth,
-  753189: () => window.innerHeight,
-  753220: $0 => {
+  754532: () => window.innerWidth,
+  754562: () => window.innerHeight,
+  754593: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  753329: ($0, $1) => {
+  754702: ($0, $1) => {
     var pngData = HEAPU8.buffer instanceof ArrayBuffer ? HEAPU8.subarray($0, $0 + $1) : HEAPU8.slice($0, $0 + $1);
     var blob = new Blob([ pngData ], {
       type: "image/png"
@@ -10740,12 +10768,12 @@ var ASM_CONSTS = {
     }
     link.href = url;
   },
-  753822: () => {
+  755195: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  753896: () => window.innerWidth,
-  753926: () => window.innerHeight,
-  753957: $0 => {
+  755269: () => window.innerWidth,
+  755299: () => window.innerHeight,
+  755330: $0 => {
     var canvas = document.querySelector(UTF8ToString($0));
     canvas.SDL3_original_position = canvas.style.position;
     canvas.SDL3_original_top = canvas.style.top;
@@ -10766,7 +10794,7 @@ var ASM_CONSTS = {
     canvas.style.top = "0";
     canvas.style.left = "0";
   },
-  754655: () => {
+  756028: () => {
     var div = document.getElementById("SDL3_fill_document_background_elements");
     if (div) {
       if (div.SDL3_canvas_nextsib) {
@@ -10783,7 +10811,7 @@ var ASM_CONSTS = {
       div.remove();
     }
   },
-  755214: () => {
+  756587: () => {
     if (window.matchMedia) {
       var SDL3 = Module["SDL3"];
       SDL3.eventHandlerThemeChanged = function(event) {
@@ -10793,7 +10821,7 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  755536: ($0, $1, $2, $3, $4) => {
+  756909: ($0, $1, $2, $3, $4) => {
     var title = UTF8ToString($0);
     var message = UTF8ToString($1);
     var background = UTF8ToString($2);
@@ -10813,7 +10841,7 @@ var ASM_CONSTS = {
     dialog.append(p);
     dialog.showModal();
   },
-  756077: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  757450: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     var dialog_id = UTF8ToString($0);
     var text = UTF8ToString($1);
     var responseId = $2;
@@ -10854,7 +10882,7 @@ var ASM_CONSTS = {
     dialog.append(button);
     return true;
   },
-  757086: $0 => {
+  758459: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -10862,7 +10890,7 @@ var ASM_CONSTS = {
     }
     return dialog.open;
   },
-  757224: $0 => {
+  758597: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -10874,17 +10902,17 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  757406: ($0, $1) => {
+  758779: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  757463: $0 => {
+  758836: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  757503: () => {
+  758876: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  757620: $0 => {
+  758993: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;

@@ -44,6 +44,170 @@ html.claw-rotated .touch-actions{right:max(16px,env(safe-area-inset-right))}
 <canvas id="loading" role="status" aria-live="polite"></canvas>
 </div>
 <script src="claw-config.js"></script>
+<script data-claw-analytics>
+globalThis.CLAW_ANALYTICS_CONFIG = {
+  "api_host" : "https://eu.i.posthog.com",
+  "hosts" : [ "captainclawnet.github.io" ],
+  "path_prefix" : "/Claw2/",
+  "token" : "phc_u9Z37RpbZc5hg35L3NUHMFg9ZhGocaAm2YrExaTPjC7h"
+};
+globalThis.CLAW_WEB_BUILD_ID = '20261105T203043Z';
+// Explicit events only. Analytics must never hold up or fail the game.
+(function (root) {
+    'use strict';
+    const config = root.CLAW_ANALYTICS_CONFIG || {};
+    const queue = [];
+    let sdk = null, stopped = false, run = null, level = null;
+    let reportedMs = 0, latestMs = 0;
+    const once = new Set();
+    const started = performance.now();
+    const uuid = () => crypto.randomUUID();
+    const comparison = () => !!root.Module?.clawComparison;
+    const safe = fn => (...args) => { try { return fn(...args); } catch (_) {} };
+    const cleanURL = value => {
+        try { const url = new URL(value); return url.origin + url.pathname; }
+        catch (_) { return ''; }
+    };
+    function send(event, properties = {}) {
+        if (stopped || comparison()) return;
+        const data = {
+            ...properties, $insert_id: uuid(), schema_version: 1,
+            build_id: root.CLAW_WEB_BUILD_ID,
+            asset_version: root.Module?.clawAssetVersions?.BaseAssets || 'unknown',
+            $current_url: cleanURL(location.href),
+            run_id: run,
+            is_test: new URL(location.href).searchParams.get('analytics_test') === '1',
+        };
+        if (sdk) sdk.capture(event, data);
+        else if (queue.length < 100) queue.push([event, data]);
+    }
+    function levelProperties(elapsedMs, cheated) {
+        if (cheated) level.cheated = true;
+        return {...level, active_seconds: Math.max(0, elapsedMs) / 1000};
+    }
+    function progress(elapsedMs, cheated, flush = false) {
+        if (!level || level.completed) return;
+        latestMs = Math.max(latestMs, elapsedMs);
+        const delta = latestMs - reportedMs;
+        if (cheated) level.cheated = true;
+        if (delta <= 0 || (!flush && delta < 15000)) return;
+        send('play_time', {...levelProperties(latestMs, cheated), active_seconds_delta: delta / 1000});
+        reportedMs = latestMs;
+    }
+    root.clawAnalytics = {
+        progress: safe(progress),
+        menu: safe((page, option, index) => send('menu_option_clicked', {menu: page, option, option_index: index})),
+        treasure: safe((category, points, slot, x, y, elapsedMs, cheated) => {
+            if (!level || level.completed) return;
+            const types = ['coin', 'gold_bar', 'ring', 'necklace', 'cross', 'scepter', 'gecko', 'chalice', 'crown', 'skull'];
+            if (!types[category]) return;
+            send('treasure_collected', {...levelProperties(elapsedMs, cheated), treasure_type: types[category],
+                points, quantity: 1, player_slot: slot, x, y});
+        }),
+        enemy: safe((type, slot, x, y, elapsedMs, cheated) => {
+            if (level && !level.completed) send('enemy_defeated', {...levelProperties(elapsedMs, cheated),
+                enemy_type: type, player_slot: slot, x, y});
+        }),
+        event: safe((name, properties) => send(name, properties)),
+        once: safe((name, properties = {}) => {
+            if (once.has(name)) return;
+            once.add(name);
+            send(name, {...properties, since_page_load_seconds: (performance.now() - started) / 1000});
+        }),
+        levelStart: safe((number, checkpoint, custom, newRun, cheated, easy) => {
+            reportedMs = latestMs = 0;
+            if (newRun || !run) run = uuid();
+            level = {level: number, level_attempt_id: uuid(), start_checkpoint: checkpoint,
+                custom_level: !!custom, cheated: !!cheated, easy_mode: !!easy, deaths: 0};
+            send('level_started', levelProperties(0, cheated));
+        }),
+        death: safe((slot, x, y, cause, elapsedMs, cheated) => {
+            if (!level) return;
+            level.deaths++;
+            send('player_died', {...levelProperties(elapsedMs, cheated), player_slot: slot,
+                x, y, location: `Level ${level.level}: ${Math.floor(x / 128) * 128}, ${Math.floor(y / 128) * 128}`,
+                cause: ['fall_death', 'death_tile', 'other'][cause] || 'other'});
+        }),
+        checkpoint: safe((checkpoint, x, y, elapsedMs, cheated) => {
+            if (level) send('checkpoint_reached', {...levelProperties(elapsedMs, cheated), checkpoint, x, y});
+        }),
+        complete: safe((elapsedMs, score, cheated) => {
+            if (!level || level.completed) return;
+            progress(elapsedMs, cheated, true);
+            send('level_completed', {...levelProperties(elapsedMs, cheated), score});
+            level.completed = true;
+        }),
+        end: safe((elapsedMs, cheated) => {
+            progress(elapsedMs, cheated, true);
+            if (level && !level.completed) send('level_exited', levelProperties(elapsedMs, cheated));
+            level = null;
+        }),
+        optOut: safe(() => {
+            stopped = true;
+            queue.length = 0;
+            try { localStorage.setItem('claw.analytics.opt_out', '1'); } catch (_) {}
+            if (sdk) sdk.opt_out_capturing();
+        }),
+    };
+    root.addEventListener?.('pagehide', safe(() => progress(latestMs, level?.cheated, true)));
+    document.addEventListener?.('visibilitychange', safe(() => {
+        if (document.hidden) progress(latestMs, level?.cheated, true);
+    }));
+    try {
+        const optedOut = localStorage.getItem('claw.analytics.opt_out') === '1';
+        const url = new URL(location.href);
+        if (!config.token || !config.hosts?.includes(url.hostname)
+            || !url.pathname.startsWith(config.path_prefix || '/')
+            || optedOut || navigator.globalPrivacyControl || navigator.doNotTrack === '1'
+            || url.searchParams.has('compare')) {
+            stopped = true;
+            return;
+        }
+        const hosts = {
+            'https://eu.i.posthog.com': 'https://eu-assets.i.posthog.com',
+            'https://us.i.posthog.com': 'https://us-assets.i.posthog.com',
+        };
+        const assets = hosts[config.api_host];
+        if (!assets) { stopped = true; return; }
+        const script = document.createElement('script');
+        script.async = true;
+        script.src = assets + '/static/array.js';
+        script.onerror = () => { stopped = true; queue.length = 0; };
+        script.onload = safe(() => {
+            if (stopped || comparison()) return;
+            root.posthog.init(config.token, {
+                api_host: config.api_host,
+                autocapture: false, capture_pageview: false, capture_pageleave: false,
+                disable_session_recording: true, disable_surveys: true,
+                capture_heatmaps: false, capture_dead_clicks: false,
+                capture_performance: false, capture_exceptions: false,
+                advanced_disable_feature_flags: true,
+                person_profiles: 'identified_only', persistence: 'localStorage',
+                save_campaign_params: false, save_referrer: false, ip: false,
+                before_send: event => {
+                    if (stopped || comparison()) return null;
+                    // Never transmit comparison tokens or other URL query/hash data.
+                    for (const key of Object.keys(event.properties || {})) {
+                        if (/url|referrer/i.test(key) && typeof event.properties[key] === 'string')
+                            event.properties[key] = cleanURL(event.properties[key]);
+                    }
+                    return event;
+                },
+                loaded: instance => {
+                    sdk = instance;
+                    if (stopped) { sdk.opt_out_capturing(); queue.length = 0; return; }
+                    for (const [name, properties] of queue.splice(0)) {
+                        try { sdk.capture(name, properties); } catch (_) {}
+                    }
+                },
+            });
+        });
+        document.head.appendChild(script);
+        root.clawAnalytics.once('$pageview');
+    } catch (_) { stopped = true; queue.length = 0; }
+})(globalThis);
+
+</script>
 <script>
 if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener('load', function () {
@@ -158,11 +322,13 @@ var Module = {
     noInitialRun: true,
     onRuntimeInitialized: function () {
         Module.clawPhase = 'ready';
+        globalThis.clawAnalytics?.once('game_ready');
         Module.setStatus('Ready. Click to start.');
     },
     clawStart: function () {
             if (Module.clawPhase !== 'ready') return;
             Module.clawPhase = 'starting';
+            globalThis.clawAnalytics?.once('game_start_requested');
             Module.canvas.focus();
             Module.setStatus('Starting game…');
             try {
@@ -177,6 +343,7 @@ var Module = {
             }
     },
     clawFail: function (error) {
+        globalThis.clawAnalytics?.once('game_error', {phase: Module.clawPhase || 'loading'});
         Module.clawPhase = 'failed';
         Module.setStatus('Game error: ' + error);
         console.error(error);
@@ -186,6 +353,7 @@ var Module = {
         // static screens on the first browser frame before revealing them.
         if (Module.clawRedrawScreen) Module.clawRedrawScreen();
         Module.clawPhase = 'running';
+        globalThis.clawAnalytics?.once('game_started');
         Module.setStatus('');
     },
     clawQuit: function () {
