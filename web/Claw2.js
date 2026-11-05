@@ -760,11 +760,12 @@ Module.clawComparisonDownload = function() {
     });
   };
   Module.clawLevels = {};
-  Module.clawRequestLevel = function(level) {
-    if (Module.clawLevels[level]) return;
+  Module.clawRequestLevel = function(level, audioLanguage = Module.clawSelectedLanguage) {
+    if (Module.clawLevels[level] && Module.clawLevels[level].language === audioLanguage) return;
     const state = Module.clawLevels[level] = {
       status: 0,
-      progress: 0
+      progress: 0,
+      language: audioLanguage
     };
     if (!Number.isInteger(level) || level < 1 || level > 14) {
       state.status = -1;
@@ -772,7 +773,7 @@ Module.clawComparisonDownload = function() {
     }
     ((async () => {
       await load("BaseAssets", level, p => state.progress = p * .8);
-      if (Module.clawSelectedLanguage) await load(Module.clawSelectedLanguage, level, p => state.progress = .8 + p * .2);
+      if (audioLanguage) await load(audioLanguage, level, p => state.progress = .8 + p * .2);
       state.status = 1;
       Module.setStatus("");
     }))().catch(error => {
@@ -792,13 +793,14 @@ Module.clawComparisonDownload = function() {
         FS.mkdirTree("/BaseAssets/TILES/LEVEL" + i);
       }
       await load("BaseAssets", 0, p => Module.setStatus("Loading game assets " + Math.round(p * 100) + "%"));
-      let language = "";
+      let language = "", audioLanguage = "";
       try {
         const ini = FS.readFile("/save/settings.ini", {
           encoding: "utf8"
         });
         const section = ini.match(/\[General\]([^]*?)(?=\n\[|$)/i)?.[1] || "";
         language = section.match(/^\s*Language\s*=\s*([A-Z]{2})\s*$/m)?.[1] || "";
+        audioLanguage = section.match(/^\s*AudioLanguage\s*=\s*([A-Z]{2})\s*$/m)?.[1] || language;
       } catch (_) {}
       // PLAY/comparison startup uses EN even when no saved language exists.
       if (Module.clawComparisonArguments?.().length) language = "EN";
@@ -808,6 +810,12 @@ Module.clawComparisonDownload = function() {
           status: 1
         };
         Module.clawSelectedLanguage = language;
+      }
+      if (packs.has(audioLanguage) && audioLanguage !== "BaseAssets" && audioLanguage !== language) {
+        await load(audioLanguage, 0);
+        Module.clawLanguages[audioLanguage] = {
+          status: 1
+        };
       }
       removeRunDependency("release-assets");
     }))().catch(error => {
@@ -9727,8 +9735,8 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  710052: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
-  710129: () => {
+  724500: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
+  724577: () => {
     const token = Module.clawComparison && Module.clawComparison.token;
     if (typeof token !== "string") return 0;
     const size = lengthBytesUTF8(token) + 1;
@@ -9736,26 +9744,26 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  710366: () => {
+  724814: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  710488: () => {
+  724936: () => {
     Module.clawHideCursor = function() {
       _clawHideCursor();
     };
   },
-  710551: () => {
+  724999: () => {
     Module.clawRedrawScreen = function() {
       _clawRedrawScreen();
     };
   },
-  710618: () => {
+  725066: () => {
     Module.clawResizeScreen = function() {
       _clawResizeScreen();
     };
     Module.clawResizeScreen();
   },
-  710712: () => {
+  725160: () => {
     Module.clawUpdateBackgroundAudio = function() {
       _clawUpdateBackgroundAudio();
     };
@@ -9771,29 +9779,29 @@ var ASM_CONSTS = {
       Module.clawUpdateBackgroundAudio();
     });
   },
-  711252: $0 => {
+  725700: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  711318: () => {
+  725766: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  711381: () => {
+  725829: () => {
     Module.setStatus("Gra została zatrzymana. Odśwież stronę, aby uruchomić ją ponownie.");
   },
-  711479: $0 => {
+  725927: $0 => {
     Module.setStatus("Błąd renderowania: " + UTF8ToString($0));
   },
-  711545: () => {
+  725993: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  711606: () => {
+  726054: () => {
     Module.clawTextShader = null;
   },
-  711640: () => {
+  726088: () => {
     Module.clawTextUniforms = {};
   },
-  711674: ($0, $1, $2, $3) => {
+  726122: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -9803,35 +9811,35 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  711827: ($0, $1, $2, $3, $4) => {
+  726275: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  711892: ($0, $1) => {
+  726340: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  711946: ($0, $1, $2) => {
+  726394: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  712005: $0 => {
-    Module.clawRequestLevel($0);
+  726453: ($0, $1) => {
+    Module.clawRequestLevel($0, UTF8ToString($1));
   },
-  712038: $0 => Module.clawLevels[$0].status,
-  712079: $0 => Module.clawLevels[$0].progress,
-  712122: $0 => Module.clawLevels[$0].status,
-  712163: $0 => {
+  726504: $0 => Module.clawLevels[$0].status,
+  726545: $0 => Module.clawLevels[$0].progress,
+  726588: $0 => Module.clawLevels[$0].status,
+  726629: $0 => {
     delete Module.clawLevels[$0];
   },
-  712197: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
-  712297: ($0, $1, $2, $3, $4, $5) => {
+  726663: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
+  726763: ($0, $1, $2, $3, $4, $5) => {
     if (!Module.clawMapPointer) return;
     const point = Module.clawMapPointer($1, $2, $3, $4, $5);
     HEAPF32[$0 >> 2] = point.x;
     HEAPF32[($0 >> 2) + 1] = point.y;
   },
-  712456: () => {
+  726922: () => {
     Module.clawPaletteShader = null;
   },
-  712491: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  726957: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     try {
       Module.clawRenderPalette($0, $1, $2, $3, $4, $5, $6, $7);
       return 1;
@@ -9841,53 +9849,54 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  712662: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  712725: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  712788: $0 => {
+  727128: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  727191: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  727254: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  712836: () => !!globalThis.clawDiscordActivity,
-  712881: () => {
+  727302: () => !!globalThis.clawDiscordActivity,
+  727347: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
+  727414: () => {
     Module.clawQuit();
   },
-  712904: () => Module.clawTouchMode ? 1 : 0,
-  712945: () => Module.clawTouchSettings.enabled(),
-  712992: () => Module.clawTouchSettings.style(),
-  713037: () => Module.clawTouchSettings.size(),
-  713081: () => {
+  727437: () => Module.clawTouchMode ? 1 : 0,
+  727478: () => Module.clawTouchSettings.enabled(),
+  727525: () => Module.clawTouchSettings.style(),
+  727570: () => Module.clawTouchSettings.size(),
+  727614: () => {
     Module.clawTouchSettings.toggle();
   },
-  713120: () => {
+  727653: () => {
     Module.clawTouchSettings.cycleStyle();
   },
-  713163: () => {
+  727696: () => {
     Module.clawTouchSettings.cycleSize();
   },
-  713205: $0 => Module.clawTouchSettings.action($0),
-  713253: $0 => {
+  727738: $0 => Module.clawTouchSettings.action($0),
+  727786: $0 => {
     Module.clawTouchSettings.toggleAction($0);
   },
-  713300: () => {
+  727833: () => {
     Module.clawTouchSettings.reorganize();
   },
-  713343: () => {
+  727876: () => {
     Module.clawTouchSettings.finishReorganizing();
   },
-  713394: () => {
+  727927: () => {
     Module.clawTouchSettings.resetPositions();
   },
-  713441: () => {
+  727974: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  713563: () => Module.clawTouchMode ? 1 : 0,
-  713604: () => {
+  728096: () => Module.clawTouchMode ? 1 : 0,
+  728137: () => {
     if (Module.clawUpdateBackgroundAudio) Module.clawUpdateBackgroundAudio();
   },
-  713682: () => Module.clawTouchActions || 0,
-  713723: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
-  713791: () => {
+  728215: () => Module.clawTouchActions || 0,
+  728256: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
+  728324: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9903,7 +9912,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  714105: $0 => {
+  728638: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -9911,13 +9920,13 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  714320: () => {
+  728853: () => {
     Module["SDL3"].dummy_audio = {};
     Module["SDL3"].dummy_audio.timers = [];
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  714497: ($0, $1, $2, $3, $4) => {
+  729030: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -9926,14 +9935,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  714689: $0 => {
+  729222: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  714820: () => {
+  729353: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -9941,13 +9950,13 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  714967: () => {
+  729500: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     }
     return false;
   },
-  715121: () => {
+  729654: () => {
     var SDL3 = Module["SDL3"];
     if (typeof (SDL3.audio_playback) === "undefined") {
       SDL3.audio_playback = {};
@@ -9969,8 +9978,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  715700: () => Module["SDL3"].audioContext.sampleRate,
-  715751: ($0, $1, $2, $3) => {
+  730233: () => Module["SDL3"].audioContext.sampleRate,
+  730284: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10007,7 +10016,7 @@ var ASM_CONSTS = {
       }).then(have_microphone).catch(no_microphone);
     }
   },
-  717442: ($0, $1, $2, $3) => {
+  731975: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var playback = SDL3.audio_playback;
     playback.callbackGeneration = (playback.callbackGeneration || 0) + 1;
@@ -10047,7 +10056,7 @@ var ASM_CONSTS = {
       playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  718977: $0 => {
+  733510: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10082,7 +10091,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  720206: ($0, $1) => {
+  734739: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var buf = SDL3.CPtrToHeap32Index($0);
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -10096,7 +10105,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  720739: ($0, $1) => {
+  735272: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -10115,11 +10124,11 @@ var ASM_CONSTS = {
       }
     }
   },
-  721366: () => {
+  735899: () => {
     Module["SDL3"].camera = {};
   },
-  721398: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  721457: ($0, $1, $2, $3, $4) => {
+  735931: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  735990: ($0, $1, $2, $3, $4) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -10193,7 +10202,7 @@ var ASM_CONSTS = {
       outcome(device, 0, 0, 0, 0);
     });
   },
-  723763: () => {
+  738296: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -10201,7 +10210,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  724014: ($0, $1, $2) => {
+  738547: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -10214,19 +10223,19 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  724392: () => {
+  738925: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  724479: $0 => {
+  739012: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"] || !gamepad["vibrationActuator"]["effects"] || !gamepad["vibrationActuator"]["effects"]["includes"]("trigger-rumble")) {
       return false;
     }
     return true;
   },
-  724725: $0 => {
+  739258: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10242,7 +10251,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  725190: $0 => {
+  739723: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10258,14 +10267,14 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  725662: $0 => {
+  740195: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
     }
     return gamepad["id"]["toLowerCase"]()["indexOf"]("xinput") >= 0;
   },
-  725805: () => {
+  740338: () => {
     const os = ([ "Android", "Linux", "iPhone", "Macintosh", "Windows" ]);
     const ua = navigator["userAgent"];
     for (let i = 0; i < os.length; i++) {
@@ -10275,7 +10284,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  726015: ($0, $1, $2) => {
+  740548: ($0, $1, $2) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       stringToUTF8("\0", $1, $2);
@@ -10297,14 +10306,14 @@ var ASM_CONSTS = {
     }
     stringToUTF8(output.trim(), $1, $2);
   },
-  726693: $0 => {
+  741226: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"]) {
       return false;
     }
     return true;
   },
-  726821: ($0, $1, $2, $3, $4) => {
+  741354: ($0, $1, $2, $3, $4) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return false;
@@ -10319,7 +10328,7 @@ var ASM_CONSTS = {
     });
     return true;
   },
-  727134: ($0, $1) => {
+  741667: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -10353,7 +10362,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  727842: ($0, $1, $2, $3) => {
+  742375: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -10384,7 +10393,7 @@ var ASM_CONSTS = {
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
     return true;
   },
-  728591: () => {
+  743124: () => {
     var SDL3 = Module["SDL3"];
     SDL3["mouse_x"] = 0;
     SDL3["mouse_y"] = 0;
@@ -10410,7 +10419,7 @@ var ASM_CONSTS = {
       }
     });
   },
-  729279: ($0, $1, $2, $3, $4) => {
+  743812: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -10431,20 +10440,20 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  729937: $0 => {
+  744470: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  730020: () => {
+  744553: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  730089: () => Module["SDL3"]["mouse_x"],
-  730127: () => Module["SDL3"]["mouse_y"],
-  730165: $0 => Module["SDL3"]["mouse_buttons"][$0],
-  730213: $0 => {
+  744622: () => Module["SDL3"]["mouse_x"],
+  744660: () => Module["SDL3"]["mouse_y"],
+  744698: $0 => Module["SDL3"]["mouse_buttons"][$0],
+  744746: $0 => {
     var data = $0;
     if (document.sdlEventHandlerLockKeysCheck) {
       document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
@@ -10456,10 +10465,10 @@ var ASM_CONSTS = {
     };
     document.addEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  730767: () => {
+  745300: () => {
     document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  730851: $0 => {
+  745384: $0 => {
     var target = document;
     if (target) {
       target.sdlEventHandlerMouseButtonUpGlobal = function(event) {
@@ -10473,7 +10482,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
     }
   },
-  731212: $0 => {
+  745745: $0 => {
     var SDL3 = Module["SDL3"];
     if (SDL3.makePointerEventCStruct === undefined) {
       SDL3.makePointerEventCStruct = function(left, top, event) {
@@ -10511,7 +10520,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  732204: $0 => {
+  746737: $0 => {
     var id = UTF8ToString($0);
     try {
       var canvas = document.querySelector(id);
@@ -10521,23 +10530,23 @@ var ASM_CONSTS = {
     } catch (e) {}
     return false;
   },
-  732370: () => document.hasFocus(),
-  732402: () => {
+  746903: () => document.hasFocus(),
+  746935: () => {
     var target = document;
     if (target) {
       target.removeEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
       target.sdlEventHandlerMouseButtonUpGlobal = undefined;
     }
   },
-  732584: () => document.body.clientWidth,
-  732622: () => document.body.clientHeight,
-  732661: () => window.innerWidth,
-  732691: () => window.innerHeight,
-  732722: () => window.outerWidth,
-  732752: () => window.outerHeight,
-  732783: () => window.pageXOffset,
-  732814: () => window.pageYOffset,
-  732845: ($0, $1) => {
+  747117: () => document.body.clientWidth,
+  747155: () => document.body.clientHeight,
+  747194: () => window.innerWidth,
+  747224: () => window.innerHeight,
+  747255: () => window.outerWidth,
+  747285: () => window.outerHeight,
+  747316: () => window.pageXOffset,
+  747347: () => window.pageYOffset,
+  747378: ($0, $1) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10575,7 +10584,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerPointerGeneric);
     }
   },
-  734233: ($0, $1, $2) => {
+  748766: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10655,7 +10664,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  736600: $0 => {
+  751133: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10671,7 +10680,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  737430: $0 => {
+  751963: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       target.removeEventListener("pointerenter", target.sdlEventHandlerPointerEnter);
@@ -10686,7 +10695,7 @@ var ASM_CONSTS = {
       target.sdlEventHandlerPointerGeneric = undefined;
     }
   },
-  738164: () => {
+  752697: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -10698,7 +10707,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  738373: () => {
+  752906: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -10706,14 +10715,14 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  738626: () => window.innerWidth,
-  738656: () => window.innerHeight,
-  738687: $0 => {
+  753159: () => window.innerWidth,
+  753189: () => window.innerHeight,
+  753220: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  738796: ($0, $1) => {
+  753329: ($0, $1) => {
     var pngData = HEAPU8.buffer instanceof ArrayBuffer ? HEAPU8.subarray($0, $0 + $1) : HEAPU8.slice($0, $0 + $1);
     var blob = new Blob([ pngData ], {
       type: "image/png"
@@ -10731,12 +10740,12 @@ var ASM_CONSTS = {
     }
     link.href = url;
   },
-  739289: () => {
+  753822: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  739363: () => window.innerWidth,
-  739393: () => window.innerHeight,
-  739424: $0 => {
+  753896: () => window.innerWidth,
+  753926: () => window.innerHeight,
+  753957: $0 => {
     var canvas = document.querySelector(UTF8ToString($0));
     canvas.SDL3_original_position = canvas.style.position;
     canvas.SDL3_original_top = canvas.style.top;
@@ -10757,7 +10766,7 @@ var ASM_CONSTS = {
     canvas.style.top = "0";
     canvas.style.left = "0";
   },
-  740122: () => {
+  754655: () => {
     var div = document.getElementById("SDL3_fill_document_background_elements");
     if (div) {
       if (div.SDL3_canvas_nextsib) {
@@ -10774,7 +10783,7 @@ var ASM_CONSTS = {
       div.remove();
     }
   },
-  740681: () => {
+  755214: () => {
     if (window.matchMedia) {
       var SDL3 = Module["SDL3"];
       SDL3.eventHandlerThemeChanged = function(event) {
@@ -10784,7 +10793,7 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  741003: ($0, $1, $2, $3, $4) => {
+  755536: ($0, $1, $2, $3, $4) => {
     var title = UTF8ToString($0);
     var message = UTF8ToString($1);
     var background = UTF8ToString($2);
@@ -10804,7 +10813,7 @@ var ASM_CONSTS = {
     dialog.append(p);
     dialog.showModal();
   },
-  741544: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  756077: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     var dialog_id = UTF8ToString($0);
     var text = UTF8ToString($1);
     var responseId = $2;
@@ -10845,7 +10854,7 @@ var ASM_CONSTS = {
     dialog.append(button);
     return true;
   },
-  742553: $0 => {
+  757086: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -10853,7 +10862,7 @@ var ASM_CONSTS = {
     }
     return dialog.open;
   },
-  742691: $0 => {
+  757224: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -10865,17 +10874,17 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  742873: ($0, $1) => {
+  757406: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  742930: $0 => {
+  757463: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  742970: () => {
+  757503: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  743087: $0 => {
+  757620: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
@@ -11400,25 +11409,32 @@ var wasmImports = {
   /** @export */ invoke_iiiiiiiiiiiii,
   /** @export */ invoke_iiiiij,
   /** @export */ invoke_iiiij,
+  /** @export */ invoke_iiiiji,
   /** @export */ invoke_iiij,
+  /** @export */ invoke_iiiji,
   /** @export */ invoke_iiijj,
   /** @export */ invoke_iiji,
   /** @export */ invoke_ijjiii,
   /** @export */ invoke_j,
   /** @export */ invoke_ji,
   /** @export */ invoke_jii,
+  /** @export */ invoke_jijii,
   /** @export */ invoke_v,
   /** @export */ invoke_vi,
   /** @export */ invoke_vif,
+  /** @export */ invoke_vifff,
   /** @export */ invoke_viffffi,
   /** @export */ invoke_vifi,
   /** @export */ invoke_vii,
   /** @export */ invoke_viiff,
-  /** @export */ invoke_viiffii,
+  /** @export */ invoke_viifff,
+  /** @export */ invoke_viiffif,
+  /** @export */ invoke_viiffiii,
   /** @export */ invoke_viii,
   /** @export */ invoke_viiif,
   /** @export */ invoke_viiiffffiii,
   /** @export */ invoke_viiii,
+  /** @export */ invoke_viiiif,
   /** @export */ invoke_viiiifi,
   /** @export */ invoke_viiiii,
   /** @export */ invoke_viiiiif,
@@ -11428,10 +11444,13 @@ var wasmImports = {
   /** @export */ invoke_viiiiiiiiii,
   /** @export */ invoke_viiiiiiiiiiiii,
   /** @export */ invoke_viiiiiiiiiiiiiii,
+  /** @export */ invoke_viiji,
   /** @export */ invoke_viijii,
   /** @export */ invoke_vij,
   /** @export */ invoke_viji,
+  /** @export */ invoke_vijii,
   /** @export */ invoke_vijiii,
+  /** @export */ invoke_vijj,
   /** @export */ invoke_vijjff,
   /** @export */ llvm_eh_typeid_for: _llvm_eh_typeid_for,
   /** @export */ random_get: _random_get,
@@ -11704,6 +11723,17 @@ function invoke_viiiiiii(index, a1, a2, a3, a4, a5, a6, a7) {
   }
 }
 
+function invoke_viiiif(index, a1, a2, a3, a4, a5) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_fiii(index, a1, a2, a3) {
   var sp = stackSave();
   try {
@@ -11770,6 +11800,28 @@ function invoke_fiiii(index, a1, a2, a3, a4) {
   }
 }
 
+function invoke_viiffif(index, a1, a2, a3, a4, a5, a6) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viifff(index, a1, a2, a3, a4, a5) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_iiji(index, a1, a2, a3) {
   var sp = stackSave();
   try {
@@ -11807,6 +11859,28 @@ function invoke_viffffi(index, a1, a2, a3, a4, a5, a6) {
   var sp = stackSave();
   try {
     getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viiji(index, a1, a2, a3, a4) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_vijj(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -11903,10 +11977,10 @@ function invoke_viji(index, a1, a2, a3) {
   }
 }
 
-function invoke_viiffii(index, a1, a2, a3, a4, a5, a6) {
+function invoke_viiffiii(index, a1, a2, a3, a4, a5, a6, a7) {
   var sp = stackSave();
   try {
-    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -11991,10 +12065,66 @@ function invoke_viiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10) {
   }
 }
 
+function invoke_vijii(index, a1, a2, a3, a4) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_jijii(index, a1, a2, a3, a4) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+    return 0n;
+  }
+}
+
+function invoke_vifff(index, a1, a2, a3, a4) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_iiiiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8, a9) {
   var sp = stackSave();
   try {
     return getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8, a9);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_iiiji(index, a1, a2, a3, a4) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_iiiiji(index, a1, a2, a3, a4, a5) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3, a4, a5);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
