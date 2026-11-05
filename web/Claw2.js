@@ -9736,8 +9736,8 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  725316: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
-  725393: () => {
+  726196: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
+  726273: () => {
     const token = Module.clawComparison && Module.clawComparison.token;
     if (typeof token !== "string") return 0;
     const size = lengthBytesUTF8(token) + 1;
@@ -9745,26 +9745,26 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  725630: () => {
+  726510: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  725752: () => {
+  726632: () => {
     Module.clawHideCursor = function() {
       _clawHideCursor();
     };
   },
-  725815: () => {
+  726695: () => {
     Module.clawRedrawScreen = function() {
       _clawRedrawScreen();
     };
   },
-  725882: () => {
+  726762: () => {
     Module.clawResizeScreen = function() {
       _clawResizeScreen();
     };
     Module.clawResizeScreen();
   },
-  725976: () => {
+  726856: () => {
     Module.clawUpdateBackgroundAudio = function() {
       _clawUpdateBackgroundAudio();
     };
@@ -9780,29 +9780,29 @@ var ASM_CONSTS = {
       Module.clawUpdateBackgroundAudio();
     });
   },
-  726516: $0 => {
+  727396: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  726582: () => {
+  727462: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  726645: () => {
+  727525: () => {
     Module.setStatus("Gra została zatrzymana. Odśwież stronę, aby uruchomić ją ponownie.");
   },
-  726743: $0 => {
+  727623: $0 => {
     Module.setStatus("Błąd renderowania: " + UTF8ToString($0));
   },
-  726809: () => {
+  727689: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  726870: () => {
+  727750: () => {
     Module.clawTextShader = null;
   },
-  726904: () => {
+  727784: () => {
     Module.clawTextUniforms = {};
   },
-  726938: ($0, $1, $2, $3) => {
+  727818: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -9812,59 +9812,59 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  727091: ($0, $1, $2, $3, $4) => {
+  727971: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  727156: ($0, $1) => {
+  728036: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  727210: ($0, $1, $2) => {
+  728090: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  727269: ($0, $1) => {
+  728149: ($0, $1) => {
     Module.clawRequestLevel($0, UTF8ToString($1));
   },
-  727320: $0 => Module.clawLevels[$0].status,
-  727361: $0 => Module.clawLevels[$0].progress,
-  727404: $0 => Module.clawLevels[$0].status,
-  727445: $0 => {
+  728200: $0 => Module.clawLevels[$0].status,
+  728241: $0 => Module.clawLevels[$0].progress,
+  728284: $0 => Module.clawLevels[$0].status,
+  728325: $0 => {
     delete Module.clawLevels[$0];
   },
-  727479: ($0, $1) => {
+  728359: ($0, $1) => {
     globalThis.clawAnalytics?.end($0, $1);
   },
-  727522: ($0, $1, $2, $3, $4, $5) => {
+  728402: ($0, $1, $2, $3, $4, $5) => {
     globalThis.clawAnalytics?.levelStart($0, $1, $2, $3, $4, $5);
   },
-  727588: ($0, $1, $2) => {
+  728468: ($0, $1, $2) => {
     globalThis.clawAnalytics?.complete($0, $1, $2);
   },
-  727640: ($0, $1, $2, $3, $4) => {
+  728520: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.checkpoint($0, $1, $2, $3, $4);
   },
-  727702: ($0, $1, $2, $3, $4, $5, $6) => {
+  728582: ($0, $1, $2, $3, $4, $5, $6) => {
     globalThis.clawAnalytics?.treasure?.($0, $1, $2, $3, $4, $5, $6);
   },
-  727772: ($0, $1, $2, $3, $4, $5) => {
+  728652: ($0, $1, $2, $3, $4, $5) => {
     globalThis.clawAnalytics?.enemy?.(UTF8ToString($0), $1, $2, $3, $4, $5);
   },
-  727849: ($0, $1) => {
+  728729: ($0, $1) => {
     globalThis.clawAnalytics?.progress?.($0, $1);
   },
-  727899: ($0, $1, $2, $3, $4, $5) => {
+  728779: ($0, $1, $2, $3, $4, $5) => {
     globalThis.clawAnalytics?.death($0, $1, $2, $3, $4, $5);
   },
-  727960: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
-  728060: ($0, $1, $2, $3, $4, $5) => {
+  728840: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
+  728940: ($0, $1, $2, $3, $4, $5) => {
     if (!Module.clawMapPointer) return;
     const point = Module.clawMapPointer($1, $2, $3, $4, $5);
     HEAPF32[$0 >> 2] = point.x;
     HEAPF32[($0 >> 2) + 1] = point.y;
   },
-  728219: () => {
+  729099: () => {
     Module.clawPaletteShader = null;
   },
-  728254: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  729134: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     try {
       Module.clawRenderPalette($0, $1, $2, $3, $4, $5, $6, $7);
       return 1;
@@ -9874,57 +9874,61 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  728425: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  728488: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  728551: $0 => {
+  729305: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  729368: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  729431: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  728599: () => !!globalThis.clawDiscordActivity,
-  728644: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
-  728711: () => {
+  729479: () => !!globalThis.clawDiscordActivity,
+  729524: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
+  729591: $0 => {
+    Module.clawRequestLanguage(UTF8ToString($0));
+  },
+  729641: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status ?? -1,
+  729708: () => {
     Module.clawQuit();
   },
-  728734: () => Module.clawTouchMode ? 1 : 0,
-  728775: ($0, $1, $2) => {
+  729731: () => Module.clawTouchMode ? 1 : 0,
+  729772: ($0, $1, $2) => {
     globalThis.clawAnalytics?.menu(UTF8ToString($0), UTF8ToString($1), $2);
   },
-  728851: () => Module.clawTouchSettings.enabled(),
-  728898: () => Module.clawTouchSettings.style(),
-  728943: () => Module.clawTouchSettings.size(),
-  728987: () => {
+  729848: () => Module.clawTouchSettings.enabled(),
+  729895: () => Module.clawTouchSettings.style(),
+  729940: () => Module.clawTouchSettings.size(),
+  729984: () => {
     Module.clawTouchSettings.toggle();
   },
-  729026: () => {
+  730023: () => {
     Module.clawTouchSettings.cycleStyle();
   },
-  729069: () => {
+  730066: () => {
     Module.clawTouchSettings.cycleSize();
   },
-  729111: $0 => Module.clawTouchSettings.action($0),
-  729159: $0 => {
+  730108: $0 => Module.clawTouchSettings.action($0),
+  730156: $0 => {
     Module.clawTouchSettings.toggleAction($0);
   },
-  729206: () => {
+  730203: () => {
     Module.clawTouchSettings.reorganize();
   },
-  729249: () => {
+  730246: () => {
     Module.clawTouchSettings.finishReorganizing();
   },
-  729300: () => {
+  730297: () => {
     Module.clawTouchSettings.resetPositions();
   },
-  729347: () => {
+  730344: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  729469: () => Module.clawTouchMode ? 1 : 0,
-  729510: () => {
+  730466: () => Module.clawTouchMode ? 1 : 0,
+  730507: () => {
     if (Module.clawUpdateBackgroundAudio) Module.clawUpdateBackgroundAudio();
   },
-  729588: () => Module.clawTouchActions || 0,
-  729629: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
-  729697: () => {
+  730585: () => Module.clawTouchActions || 0,
+  730626: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
+  730694: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -9940,7 +9944,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  730011: $0 => {
+  731008: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -9948,13 +9952,13 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  730226: () => {
+  731223: () => {
     Module["SDL3"].dummy_audio = {};
     Module["SDL3"].dummy_audio.timers = [];
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  730403: ($0, $1, $2, $3, $4) => {
+  731400: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -9963,14 +9967,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  730595: $0 => {
+  731592: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  730726: () => {
+  731723: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -9978,13 +9982,13 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  730873: () => {
+  731870: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     }
     return false;
   },
-  731027: () => {
+  732024: () => {
     var SDL3 = Module["SDL3"];
     if (typeof (SDL3.audio_playback) === "undefined") {
       SDL3.audio_playback = {};
@@ -10006,8 +10010,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  731606: () => Module["SDL3"].audioContext.sampleRate,
-  731657: ($0, $1, $2, $3) => {
+  732603: () => Module["SDL3"].audioContext.sampleRate,
+  732654: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10044,7 +10048,7 @@ var ASM_CONSTS = {
       }).then(have_microphone).catch(no_microphone);
     }
   },
-  733348: ($0, $1, $2, $3) => {
+  734345: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var playback = SDL3.audio_playback;
     playback.callbackGeneration = (playback.callbackGeneration || 0) + 1;
@@ -10084,7 +10088,7 @@ var ASM_CONSTS = {
       playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  734883: $0 => {
+  735880: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10119,7 +10123,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  736112: ($0, $1) => {
+  737109: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var buf = SDL3.CPtrToHeap32Index($0);
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -10133,7 +10137,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  736645: ($0, $1) => {
+  737642: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -10152,11 +10156,11 @@ var ASM_CONSTS = {
       }
     }
   },
-  737272: () => {
+  738269: () => {
     Module["SDL3"].camera = {};
   },
-  737304: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  737363: ($0, $1, $2, $3, $4) => {
+  738301: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  738360: ($0, $1, $2, $3, $4) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -10230,7 +10234,7 @@ var ASM_CONSTS = {
       outcome(device, 0, 0, 0, 0);
     });
   },
-  739669: () => {
+  740666: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -10238,7 +10242,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  739920: ($0, $1, $2) => {
+  740917: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -10251,19 +10255,19 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  740298: () => {
+  741295: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  740385: $0 => {
+  741382: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"] || !gamepad["vibrationActuator"]["effects"] || !gamepad["vibrationActuator"]["effects"]["includes"]("trigger-rumble")) {
       return false;
     }
     return true;
   },
-  740631: $0 => {
+  741628: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10279,7 +10283,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  741096: $0 => {
+  742093: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10295,14 +10299,14 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  741568: $0 => {
+  742565: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
     }
     return gamepad["id"]["toLowerCase"]()["indexOf"]("xinput") >= 0;
   },
-  741711: () => {
+  742708: () => {
     const os = ([ "Android", "Linux", "iPhone", "Macintosh", "Windows" ]);
     const ua = navigator["userAgent"];
     for (let i = 0; i < os.length; i++) {
@@ -10312,7 +10316,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  741921: ($0, $1, $2) => {
+  742918: ($0, $1, $2) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       stringToUTF8("\0", $1, $2);
@@ -10334,14 +10338,14 @@ var ASM_CONSTS = {
     }
     stringToUTF8(output.trim(), $1, $2);
   },
-  742599: $0 => {
+  743596: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"]) {
       return false;
     }
     return true;
   },
-  742727: ($0, $1, $2, $3, $4) => {
+  743724: ($0, $1, $2, $3, $4) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return false;
@@ -10356,7 +10360,7 @@ var ASM_CONSTS = {
     });
     return true;
   },
-  743040: ($0, $1) => {
+  744037: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -10390,7 +10394,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  743748: ($0, $1, $2, $3) => {
+  744745: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -10421,7 +10425,7 @@ var ASM_CONSTS = {
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
     return true;
   },
-  744497: () => {
+  745494: () => {
     var SDL3 = Module["SDL3"];
     SDL3["mouse_x"] = 0;
     SDL3["mouse_y"] = 0;
@@ -10447,7 +10451,7 @@ var ASM_CONSTS = {
       }
     });
   },
-  745185: ($0, $1, $2, $3, $4) => {
+  746182: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -10468,20 +10472,20 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  745843: $0 => {
+  746840: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  745926: () => {
+  746923: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  745995: () => Module["SDL3"]["mouse_x"],
-  746033: () => Module["SDL3"]["mouse_y"],
-  746071: $0 => Module["SDL3"]["mouse_buttons"][$0],
-  746119: $0 => {
+  746992: () => Module["SDL3"]["mouse_x"],
+  747030: () => Module["SDL3"]["mouse_y"],
+  747068: $0 => Module["SDL3"]["mouse_buttons"][$0],
+  747116: $0 => {
     var data = $0;
     if (document.sdlEventHandlerLockKeysCheck) {
       document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
@@ -10493,10 +10497,10 @@ var ASM_CONSTS = {
     };
     document.addEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  746673: () => {
+  747670: () => {
     document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  746757: $0 => {
+  747754: $0 => {
     var target = document;
     if (target) {
       target.sdlEventHandlerMouseButtonUpGlobal = function(event) {
@@ -10510,7 +10514,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
     }
   },
-  747118: $0 => {
+  748115: $0 => {
     var SDL3 = Module["SDL3"];
     if (SDL3.makePointerEventCStruct === undefined) {
       SDL3.makePointerEventCStruct = function(left, top, event) {
@@ -10548,7 +10552,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  748110: $0 => {
+  749107: $0 => {
     var id = UTF8ToString($0);
     try {
       var canvas = document.querySelector(id);
@@ -10558,23 +10562,23 @@ var ASM_CONSTS = {
     } catch (e) {}
     return false;
   },
-  748276: () => document.hasFocus(),
-  748308: () => {
+  749273: () => document.hasFocus(),
+  749305: () => {
     var target = document;
     if (target) {
       target.removeEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
       target.sdlEventHandlerMouseButtonUpGlobal = undefined;
     }
   },
-  748490: () => document.body.clientWidth,
-  748528: () => document.body.clientHeight,
-  748567: () => window.innerWidth,
-  748597: () => window.innerHeight,
-  748628: () => window.outerWidth,
-  748658: () => window.outerHeight,
-  748689: () => window.pageXOffset,
-  748720: () => window.pageYOffset,
-  748751: ($0, $1) => {
+  749487: () => document.body.clientWidth,
+  749525: () => document.body.clientHeight,
+  749564: () => window.innerWidth,
+  749594: () => window.innerHeight,
+  749625: () => window.outerWidth,
+  749655: () => window.outerHeight,
+  749686: () => window.pageXOffset,
+  749717: () => window.pageYOffset,
+  749748: ($0, $1) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10612,7 +10616,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerPointerGeneric);
     }
   },
-  750139: ($0, $1, $2) => {
+  751136: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10692,7 +10696,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  752506: $0 => {
+  753503: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10708,7 +10712,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  753336: $0 => {
+  754333: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       target.removeEventListener("pointerenter", target.sdlEventHandlerPointerEnter);
@@ -10723,7 +10727,7 @@ var ASM_CONSTS = {
       target.sdlEventHandlerPointerGeneric = undefined;
     }
   },
-  754070: () => {
+  755067: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -10735,7 +10739,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  754279: () => {
+  755276: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -10743,14 +10747,14 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  754532: () => window.innerWidth,
-  754562: () => window.innerHeight,
-  754593: $0 => {
+  755529: () => window.innerWidth,
+  755559: () => window.innerHeight,
+  755590: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  754702: ($0, $1) => {
+  755699: ($0, $1) => {
     var pngData = HEAPU8.buffer instanceof ArrayBuffer ? HEAPU8.subarray($0, $0 + $1) : HEAPU8.slice($0, $0 + $1);
     var blob = new Blob([ pngData ], {
       type: "image/png"
@@ -10768,12 +10772,12 @@ var ASM_CONSTS = {
     }
     link.href = url;
   },
-  755195: () => {
+  756192: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  755269: () => window.innerWidth,
-  755299: () => window.innerHeight,
-  755330: $0 => {
+  756266: () => window.innerWidth,
+  756296: () => window.innerHeight,
+  756327: $0 => {
     var canvas = document.querySelector(UTF8ToString($0));
     canvas.SDL3_original_position = canvas.style.position;
     canvas.SDL3_original_top = canvas.style.top;
@@ -10794,7 +10798,7 @@ var ASM_CONSTS = {
     canvas.style.top = "0";
     canvas.style.left = "0";
   },
-  756028: () => {
+  757025: () => {
     var div = document.getElementById("SDL3_fill_document_background_elements");
     if (div) {
       if (div.SDL3_canvas_nextsib) {
@@ -10811,7 +10815,7 @@ var ASM_CONSTS = {
       div.remove();
     }
   },
-  756587: () => {
+  757584: () => {
     if (window.matchMedia) {
       var SDL3 = Module["SDL3"];
       SDL3.eventHandlerThemeChanged = function(event) {
@@ -10821,7 +10825,7 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  756909: ($0, $1, $2, $3, $4) => {
+  757906: ($0, $1, $2, $3, $4) => {
     var title = UTF8ToString($0);
     var message = UTF8ToString($1);
     var background = UTF8ToString($2);
@@ -10841,7 +10845,7 @@ var ASM_CONSTS = {
     dialog.append(p);
     dialog.showModal();
   },
-  757450: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  758447: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     var dialog_id = UTF8ToString($0);
     var text = UTF8ToString($1);
     var responseId = $2;
@@ -10882,7 +10886,7 @@ var ASM_CONSTS = {
     dialog.append(button);
     return true;
   },
-  758459: $0 => {
+  759456: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -10890,7 +10894,7 @@ var ASM_CONSTS = {
     }
     return dialog.open;
   },
-  758597: $0 => {
+  759594: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -10902,17 +10906,17 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  758779: ($0, $1) => {
+  759776: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  758836: $0 => {
+  759833: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  758876: () => {
+  759873: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  758993: $0 => {
+  759990: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
