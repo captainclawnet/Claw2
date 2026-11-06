@@ -51,12 +51,13 @@ globalThis.CLAW_ANALYTICS_CONFIG = {
   "path_prefix" : "/Claw2/",
   "token" : "phc_u9Z37RpbZc5hg35L3NUHMFg9ZhGocaAm2YrExaTPjC7h"
 };
-globalThis.CLAW_WEB_BUILD_ID = '20261105T211606Z';
+globalThis.CLAW_WEB_BUILD_ID = '20261106T062724Z';
 // Explicit events only. Analytics must never hold up or fail the game.
 (function (root) {
     'use strict';
     const config = root.CLAW_ANALYTICS_CONFIG || {};
     const queue = [];
+    const errors = [], seenErrors = new Set();
     let sdk = null, stopped = false, run = null, level = null;
     let reportedMs = 0, latestMs = 0;
     const once = new Set();
@@ -68,6 +69,26 @@ globalThis.CLAW_WEB_BUILD_ID = '20261105T211606Z';
         try { const url = new URL(value); return url.origin + url.pathname; }
         catch (_) { return ''; }
     };
+    const scrubErrorText = value => String(value).slice(0, 12000)
+        .replace(/https?:\/\/[^\s)]+/g, value => cleanURL(value))
+        .replace(/\b(?:phc_|phx_)[A-Za-z0-9]+\b/g, '[redacted]');
+    function captureError(error, phase) {
+        if (stopped || comparison() || seenErrors.size >= 20) return;
+        const message = scrubErrorText(typeof error === 'string' ? error : error?.message || 'Unknown game failure');
+        const stack = error?.stack ? scrubErrorText(error.stack) : '';
+        const key = message + stack;
+        if (seenErrors.has(key)) return;
+        seenErrors.add(key);
+        const normalized = new Error(message);
+        normalized.name = scrubErrorText(error?.name || 'GameError');
+        if (stack) normalized.stack = stack;
+        const properties = {phase, build_id: root.CLAW_WEB_BUILD_ID, run_id: run,
+            level: level?.level, level_attempt_id: level?.level_attempt_id,
+            asset_version: root.Module?.clawAssetVersions?.BaseAssets || 'unknown',
+            is_test: new URL(location.href).searchParams.get('analytics_test') === '1'};
+        if (sdk) sdk.captureException(normalized, properties);
+        else errors.push([normalized, properties]);
+    }
     function send(event, properties = {}) {
         if (stopped || comparison()) return;
         const data = {
@@ -95,6 +116,7 @@ globalThis.CLAW_WEB_BUILD_ID = '20261105T211606Z';
         reportedMs = latestMs;
     }
     root.clawAnalytics = {
+        error: safe(captureError),
         progress: safe(progress),
         menu: safe((page, option, index) => send('menu_option_clicked', {menu: page, option, option_index: index})),
         treasure: safe((category, points, slot, x, y, elapsedMs, cheated) => {
@@ -145,6 +167,7 @@ globalThis.CLAW_WEB_BUILD_ID = '20261105T211606Z';
         optOut: safe(() => {
             stopped = true;
             queue.length = 0;
+            errors.length = 0;
             try { localStorage.setItem('claw.analytics.opt_out', '1'); } catch (_) {}
             if (sdk) sdk.opt_out_capturing();
         }),
@@ -172,7 +195,7 @@ globalThis.CLAW_WEB_BUILD_ID = '20261105T211606Z';
         const script = document.createElement('script');
         script.async = true;
         script.src = assets + '/static/array.js';
-        script.onerror = () => { stopped = true; queue.length = 0; };
+        script.onerror = () => { stopped = true; queue.length = 0; errors.length = 0; };
         script.onload = safe(() => {
             if (stopped || comparison()) return;
             root.posthog.init(config.token, {
@@ -180,6 +203,8 @@ globalThis.CLAW_WEB_BUILD_ID = '20261105T211606Z';
                 autocapture: false, capture_pageview: false, capture_pageleave: false,
                 disable_session_recording: true, disable_surveys: true,
                 capture_heatmaps: false, capture_dead_clicks: false,
+                // Existing shell handlers capture uncaught errors and rejections, including
+                // before SDK load. Disable SDK listeners to avoid duplicate exceptions.
                 capture_performance: false, capture_exceptions: false,
                 advanced_disable_feature_flags: true,
                 person_profiles: 'identified_only', persistence: 'localStorage',
@@ -195,7 +220,10 @@ globalThis.CLAW_WEB_BUILD_ID = '20261105T211606Z';
                 },
                 loaded: instance => {
                     sdk = instance;
-                    if (stopped) { sdk.opt_out_capturing(); queue.length = 0; return; }
+                    if (stopped) { sdk.opt_out_capturing(); queue.length = 0; errors.length = 0; return; }
+                    for (const [error, properties] of errors.splice(0)) {
+                        try { sdk.captureException(error, properties); } catch (_) {}
+                    }
                     for (const [name, properties] of queue.splice(0)) {
                         try { sdk.capture(name, properties); } catch (_) {}
                     }
@@ -339,10 +367,11 @@ var Module = {
                 if (code && Module.clawPhase !== 'failed')
                     Module.clawFail('Game startup ended with exit code ' + code);
             } catch (error) {
-                Module.clawFail(error.stack || String(error));
+                Module.clawFail(error);
             }
     },
     clawFail: function (error) {
+        globalThis.clawAnalytics?.error(error, Module.clawPhase || 'loading');
         globalThis.clawAnalytics?.once('game_error', {phase: Module.clawPhase || 'loading'});
         Module.clawPhase = 'failed';
         Module.setStatus('Game error: ' + error);
@@ -406,7 +435,7 @@ Module.canvas.addEventListener('keydown', event => {
     }
 });
 Module.setStatus('Loading game…');
-window.addEventListener('error', event => Module.clawFail(event.error?.stack || event.message));
+window.addEventListener('error', event => Module.clawFail(event.error || event.message));
 window.addEventListener('unhandledrejection', event => Module.clawFail(event.reason));
 console.info('Claw Web', {browser:navigator.userAgent, language:navigator.language,
     cores:navigator.hardwareConcurrency, memoryGiB:navigator.deviceMemory,
