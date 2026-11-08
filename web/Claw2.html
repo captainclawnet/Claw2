@@ -38,33 +38,165 @@ html.claw-rotated .touch-actions{right:max(16px,env(safe-area-inset-right))}
 #touch-controls .touch-keyboard{position:absolute;top:max(16px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));pointer-events:auto;font-size:26px}
 #touch-controls .touch-menu button{font-size:26px}
 .touch-text-input{position:absolute;top:0;left:50%;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none;font-size:16px}
+#leaderboard-dialog{box-sizing:border-box;width:min(760px,calc(100vw - 28px));max-height:85dvh;margin:auto;padding:20px;border:2px solid #d09535;border-radius:12px;background:#10151d;color:#eee;text-align:left;font:16px system-ui}
+#leaderboard-dialog::backdrop{background:#000b}
+#leaderboard-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+#leaderboard-title{margin:0;color:#ffe1a3}
+#leaderboard-close{width:42px;height:42px;border:1px solid #ffffff80;border-radius:8px;background:#172536;color:white;font-size:24px}
+#leaderboard-level-label{display:block;margin:12px 0 4px}
+#leaderboard-level{max-width:100%;padding:8px;background:#172536;color:#fff}
+#leaderboard-status{min-height:1.5em}
+#leaderboard-entries{max-height:55dvh;overflow:auto;padding-left:28px}
+#leaderboard-entries li{margin:10px 0;padding:10px;border:1px solid #ffffff30;border-radius:8px}
+#leaderboard-entries li span,#leaderboard-entries li small{display:block;margin-top:5px}
+#leaderboard-entries li small{color:#ddd}
 </style>
 <div id="game">
 <canvas id="canvas" tabindex="0" aria-label="Claw 2" oncontextmenu="event.preventDefault()"></canvas>
 <canvas id="loading" role="status" aria-live="polite"></canvas>
 </div>
+<dialog id="leaderboard-dialog" aria-labelledby="leaderboard-title">
+<div id="leaderboard-header"><h2 id="leaderboard-title"></h2><button id="leaderboard-close" type="button" aria-label="Close">×</button></div>
+<label id="leaderboard-level-label" for="leaderboard-level"></label>
+<select id="leaderboard-level" aria-label="Level"></select>
+<p id="leaderboard-status" aria-live="polite"></p>
+<ol id="leaderboard-entries"></ol>
+</dialog>
 <script src="claw-config.js"></script>
 <script data-claw-analytics>
 globalThis.CLAW_ANALYTICS_CONFIG = {
   "api_host" : "https://eu.i.posthog.com",
   "hosts" : [ "captainclawnet.github.io" ],
+  "leaderboard_api" : "",
   "path_prefix" : "/Claw2/",
   "token" : "phc_u9Z37RpbZc5hg35L3NUHMFg9ZhGocaAm2YrExaTPjC7h"
 };
-globalThis.CLAW_WEB_BUILD_ID = '20261106T062724Z';
+globalThis.CLAW_WEB_BUILD_ID = '20261108T122732Z';
 // Explicit events only. Analytics must never hold up or fail the game.
 (function (root) {
     'use strict';
     const config = root.CLAW_ANALYTICS_CONFIG || {};
     const queue = [];
     const errors = [], seenErrors = new Set();
+    const treasureTypes = ['coin', 'gold_bar', 'ring', 'necklace', 'cross', 'scepter', 'gecko', 'chalice', 'crown', 'skull'];
+    const leaderboardText = {
+        en: {title:'LEADERBOARDS',close:'Close',level:'Level',loading:'Loading…',empty:'No scores yet.',
+            error:'Unable to load leaderboards.',score:'Score',treasure:'Treasures',
+            types:['Coin','Gold bar','Ring','Necklace','Cross','Scepter','Gecko','Chalice','Crown','Skull'],anonymous:'Anonymous'},
+        pt: {title:'CLASSIFICAÇÃO',close:'Fechar',level:'Nível',loading:'Carregando…',empty:'Ainda não há pontuações.',
+            error:'Não foi possível carregar as classificações.',score:'Pontuação',treasure:'Tesouros',
+            types:['Moeda','Barra de ouro','Anel','Colar','Cruz','Cetro','Lagartixa','Cálice','Coroa','Caveira'],anonymous:'Anônimo'},
+        de: {title:'BESTENLISTEN',close:'Schließen',level:'Level',loading:'Wird geladen…',empty:'Noch keine Ergebnisse.',
+            error:'Bestenlisten konnten nicht geladen werden.',score:'Punkte',treasure:'Schätze',
+            types:['Münze','Goldbarren','Ring','Halskette','Kreuz','Zepter','Gecko','Kelch','Krone','Schädel'],anonymous:'Anonym'},
+        es: {title:'CLASIFICACIÓN',close:'Cerrar',level:'Nivel',loading:'Cargando…',empty:'Aún no hay puntuaciones.',
+            error:'No se pudo cargar la clasificación.',score:'Puntuación',treasure:'Tesoros',
+            types:['Moneda','Lingote de oro','Anillo','Collar','Cruz','Cetro','Gecko','Cáliz','Corona','Cráneo'],anonymous:'Anónimo'},
+        ja: {title:'ランキング',close:'閉じる',level:'レベル',loading:'読み込み中…',empty:'スコアはまだありません。',
+            error:'ランキングを読み込めませんでした。',score:'スコア',treasure:'お宝',
+            types:['コイン','金塊','指輪','ネックレス','十字架','笏','ヤモリ','聖杯','王冠','頭蓋骨'],anonymous:'匿名'},
+        pl: {title:'RANKINGI',close:'Zamknij',level:'Poziom',loading:'Wczytywanie…',empty:'Brak wyników.',
+            error:'Nie udało się wczytać rankingów.',score:'Wynik',treasure:'Skarby',
+            types:['Moneta','Sztabka złota','Pierścień','Naszyjnik','Krzyż','Berło','Gekon','Kielich','Korona','Czaszka'],anonymous:'Anonim'},
+        ru: {title:'ТАБЛИЦА РЕКОРДОВ',close:'Закрыть',level:'Уровень',loading:'Загрузка…',empty:'Результатов пока нет.',
+            error:'Не удалось загрузить таблицу рекордов.',score:'Счёт',treasure:'Сокровища',
+            types:['Монета','Золотой слиток','Кольцо','Ожерелье','Крест','Скипетр','Геккон','Кубок','Корона','Череп'],anonymous:'Аноним'}
+    };
     let sdk = null, stopped = false, run = null, level = null;
+    let lastGameplay = null, lastPosition = null, closeReported = false;
+    let loading = false, userOptOut = false;
+    let levelTreasureCounts = Array(treasureTypes.length).fill(0);
+    let leaderboardRequest = 0;
+    const routeSamples = new Map();
+    let discordId = null, identifiedId = null;
+    function syncIdentity() {
+        if (!sdk || stopped || comparison() || !allowed()) return;
+        const id = discordId ? 'discord:' + discordId : null;
+        if (id === identifiedId) return;
+        if (identifiedId) sdk.reset();
+        if (id) sdk.identify(id, {discord_id: discordId});
+        identifiedId = id;
+    }
+    try { userOptOut = localStorage.getItem('claw.analytics.opt_out') === '1'; } catch (_) {}
+    const allowed = () => {
+        const url = new URL(location.href);
+        return !!config.token && !!config.hosts?.includes(url.hostname)
+            && url.pathname.startsWith(config.path_prefix || '/')
+            && !navigator.globalPrivacyControl && navigator.doNotTrack !== '1'
+            && !url.searchParams.has('compare') && !comparison();
+    };
     let reportedMs = 0, latestMs = 0;
     const once = new Set();
     const started = performance.now();
     const uuid = () => crypto.randomUUID();
+    const pageVisit = uuid();
+    let sequence = 0, menuStep = 0, lastMenu = null, hidden = !!document.hidden, pageLeft = false;
     const comparison = () => !!root.Module?.clawComparison;
     const safe = fn => (...args) => { try { return fn(...args); } catch (_) {} };
+    function showLeaderboards() {
+        const dialog = document.getElementById?.('leaderboard-dialog');
+        const select = document.getElementById?.('leaderboard-level');
+        const title = document.getElementById?.('leaderboard-title');
+        const close = document.getElementById?.('leaderboard-close');
+        const levelLabel = document.getElementById?.('leaderboard-level-label');
+        const status = document.getElementById?.('leaderboard-status');
+        const entries = document.getElementById?.('leaderboard-entries');
+        if (!dialog || !select || !title || !close || !levelLabel || !status || !entries
+            || !config.leaderboard_api || !config.token) return;
+        const language = (navigator.language || 'en').toLowerCase().split('-')[0];
+        const text = leaderboardText[language] || leaderboardText.en;
+        title.textContent = text.title;
+        close.textContent = '×';
+        close.setAttribute('aria-label', text.close);
+        levelLabel.textContent = text.level;
+        if (!select.options.length) {
+            for (let number = 1; number <= 14; number++) {
+                const option = document.createElement('option');
+                option.value = String(number);
+                option.textContent = String(number).padStart(2, '0');
+                select.append(option);
+            }
+        }
+        const load = async () => {
+            const currentRequest = ++leaderboardRequest;
+            status.textContent = text.loading;
+            entries.replaceChildren();
+            try {
+                const endpoint = new URL(`/api/leaderboards/${select.value}`, config.leaderboard_api);
+                const response = await fetch(endpoint, {cache: 'no-store', credentials: 'omit',
+                    headers: {Accept: 'application/json'}});
+                if (!response.ok) throw new Error('Leaderboard request failed');
+                const data = await response.json();
+                if (!Array.isArray(data.entries)) throw new Error('Invalid leaderboard response');
+                if (currentRequest !== leaderboardRequest || !dialog.open) return;
+                status.textContent = data.entries.length ? '' : text.empty;
+                for (const entry of data.entries) {
+                    const item = document.createElement('li');
+                    const identity = document.createElement('strong');
+                    identity.textContent = `${text.anonymous} #${String(entry.player || '').slice(0, 12)}`;
+                    const score = document.createElement('span');
+                    score.textContent = `${text.score}: ${Number(entry.score).toLocaleString()}`;
+                    const counts = document.createElement('small');
+                    const values = entry.treasureCounts && typeof entry.treasureCounts === 'object'
+                        ? entry.treasureCounts : {};
+                    counts.textContent = `${text.treasure}: ${text.types.map((name, index) =>
+                        `${name} ${Math.max(0, Number(values[treasureTypes[index]]) || 0)}`).join(' · ')}`;
+                    item.append(identity, score, counts);
+                    entries.append(item);
+                }
+            } catch (_) {
+                if (currentRequest === leaderboardRequest && dialog.open) status.textContent = text.error;
+            }
+        };
+        if (!dialog.dataset.leaderboardBound) {
+            select.addEventListener('change', () => load());
+            close.addEventListener('click', () => dialog.close());
+            dialog.addEventListener('close', () => { leaderboardRequest++; });
+            dialog.dataset.leaderboardBound = '1';
+        }
+        if (!dialog.open) dialog.showModal();
+        load();
+    }
     const cleanURL = value => {
         try { const url = new URL(value); return url.origin + url.pathname; }
         catch (_) { return ''; }
@@ -89,18 +221,21 @@ globalThis.CLAW_WEB_BUILD_ID = '20261106T062724Z';
         if (sdk) sdk.captureException(normalized, properties);
         else errors.push([normalized, properties]);
     }
-    function send(event, properties = {}) {
+    function send(event, properties = {}, options = {}) {
         if (stopped || comparison()) return;
         const data = {
             ...properties, $insert_id: uuid(), schema_version: 1,
+            page_visit_id: pageVisit, event_sequence: ++sequence,
+            since_page_load_seconds: (performance.now() - started) / 1000,
             build_id: root.CLAW_WEB_BUILD_ID,
             asset_version: root.Module?.clawAssetVersions?.BaseAssets || 'unknown',
             $current_url: cleanURL(location.href),
             run_id: run,
             is_test: new URL(location.href).searchParams.get('analytics_test') === '1',
         };
-        if (sdk) sdk.capture(event, data);
-        else if (queue.length < 100) queue.push([event, data]);
+        const captureOptions = {...options, timestamp: new Date()};
+        if (sdk) sdk.capture(event, data, captureOptions);
+        else if (queue.length < 100) queue.push([event, data, captureOptions]);
     }
     function levelProperties(elapsedMs, cheated) {
         if (cheated) level.cheated = true;
@@ -115,20 +250,75 @@ globalThis.CLAW_WEB_BUILD_ID = '20261106T062724Z';
         send('play_time', {...levelProperties(latestMs, cheated), active_seconds_delta: delta / 1000});
         reportedMs = latestMs;
     }
+    function reportApplicationClose() {
+        if (closeReported || !lastGameplay || !lastPosition) return;
+        closeReported = true;
+        send('gameplay_state_changed', {
+            ...(level || lastGameplay), active_seconds: latestMs / 1000,
+            game_state: 'application_closed', player_slot: lastPosition.slot,
+            x: lastPosition.x, y: lastPosition.y,
+        }, {send_instantly: true, transport: 'sendBeacon'});
+    }
     root.clawAnalytics = {
+        discordIdentity: safe(id => {
+            discordId = typeof id === 'string' && /^\d{5,25}$/.test(id) ? id : null;
+            syncIdentity();
+        }),
+        route: safe((slot,x,y,dying,elapsedMs) => {
+            if (!level || level.completed || stopped) return;
+            const previous = routeSamples.get(slot);
+            if (dying) { routeSamples.delete(slot); return; }
+            if (previous && elapsedMs-previous.elapsed < 3000) return;
+            if (previous && Math.hypot(x-previous.x,y-previous.y)<16) return;
+            routeSamples.set(slot,{x,y,elapsed:elapsedMs});
+            send('player_route',{...levelProperties(elapsedMs,false),player_slot:slot,x,y,route_segment:level.deaths});
+        }),
+        cheat: safe((name,major,slot,x,y) => {
+            if (!level || !/^MP[A-Z0-9]{1,40}$/.test(name)) return;
+            send('cheat_used',{...levelProperties(latestMs,major),cheat_name:name,major:!!major,player_slot:slot,x,y});
+        }),
+        enabled: safe(() => allowed() && !userOptOut && !stopped),
+        canEnable: safe(() => allowed()),
+        setEnabled: safe(enabled => {
+            if (!enabled) { root.clawAnalytics.optOut(); return; }
+            if (!allowed()) return;
+            userOptOut = false;
+            try { localStorage.setItem('claw.analytics.opt_out', '0'); } catch (_) {}
+            stopped = false;
+            // Do not backfill play time accrued while opted out.
+            reportedMs = latestMs;
+            if (sdk) sdk.clear_opt_in_out_capturing();
+            else if (!loading) initialize();
+            syncIdentity();
+        }),
         error: safe(captureError),
         progress: safe(progress),
-        menu: safe((page, option, index) => send('menu_option_clicked', {menu: page, option, option_index: index})),
-        treasure: safe((category, points, slot, x, y, elapsedMs, cheated) => {
-            if (!level || level.completed) return;
-            const types = ['coin', 'gold_bar', 'ring', 'necklace', 'cross', 'scepter', 'gecko', 'chalice', 'crown', 'skull'];
-            if (!types[category]) return;
-            send('treasure_collected', {...levelProperties(elapsedMs, cheated), treasure_type: types[category],
-                points, quantity: 1, player_slot: slot, x, y});
+        quitLevel: safe(() => {
+            if (level && !level.completed) send('level_quit_requested', levelProperties(latestMs, level.cheated));
         }),
-        enemy: safe((type, slot, x, y, elapsedMs, cheated) => {
-            if (level && !level.completed) send('enemy_defeated', {...levelProperties(elapsedMs, cheated),
-                enemy_type: type, player_slot: slot, x, y});
+        menu: safe((page, option, index) => {
+            if (stopped || comparison()) return;
+            const previous = lastMenu;
+            lastMenu = {menu: page, option};
+            send('menu_option_clicked', {menu: page, option, option_index: index,
+                menu_selection: `${page} → ${option}`, menu_step: ++menuStep,
+                previous_menu: previous?.menu, previous_option: previous?.option});
+        }),
+        treasure: safe((category, points, slot, x, y, elapsedMs, cheated, mapObjectId) => {
+            if (!level || level.completed) return;
+            if (!treasureTypes[category]) return;
+            levelTreasureCounts[category]++;
+            const properties = {...levelProperties(elapsedMs, cheated), treasure_type: treasureTypes[category],
+                points, quantity: 1, player_slot: slot, x, y};
+            if (mapObjectId !== null && mapObjectId !== undefined) properties.map_object_id = String(mapObjectId);
+            send('treasure_collected', properties);
+        }),
+        enemy: safe((type, slot, x, y, elapsedMs, cheated, source = 'unknown', mapObjectId) => {
+            if (!level || level.completed) return;
+            const properties = {...levelProperties(elapsedMs, cheated),
+                enemy_type: type, cause_detail: source, player_slot: slot, x, y};
+            if (mapObjectId !== null && mapObjectId !== undefined) properties.map_object_id = String(mapObjectId);
+            send('enemy_defeated', properties);
         }),
         event: safe((name, properties) => send(name, properties)),
         once: safe((name, properties = {}) => {
@@ -137,18 +327,38 @@ globalThis.CLAW_WEB_BUILD_ID = '20261106T062724Z';
             send(name, {...properties, since_page_load_seconds: (performance.now() - started) / 1000});
         }),
         levelStart: safe((number, checkpoint, custom, newRun, cheated, easy) => {
+            routeSamples.clear();
             reportedMs = latestMs = 0;
+            levelTreasureCounts = Array(treasureTypes.length).fill(0);
             if (newRun || !run) run = uuid();
             level = {level: number, level_attempt_id: uuid(), start_checkpoint: checkpoint,
                 custom_level: !!custom, cheated: !!cheated, easy_mode: !!easy, deaths: 0};
+            lastGameplay = {...level, run_id: run};
+            lastPosition = null;
+            closeReported = false;
             send('level_started', levelProperties(0, cheated));
         }),
-        death: safe((slot, x, y, cause, elapsedMs, cheated) => {
+        position: safe((slot, x, y) => {
+            if (!level || !Number.isFinite(x) || !Number.isFinite(y)) return;
+            lastPosition = {slot, x, y};
+        }),
+        stateChange: safe((state, slot, x, y) => {
+            if (!level || level.completed || !Number.isFinite(x) || !Number.isFinite(y)) return;
+            send('gameplay_state_changed', {
+                ...levelProperties(latestMs, level.cheated), game_state: state,
+                player_slot: slot, x, y,
+            });
+        }),
+        applicationQuit: safe(reportApplicationClose),
+        death: safe((slot, x, y, cause, elapsedMs, cheated, source = '', mapObjectId) => {
             if (!level) return;
             level.deaths++;
-            send('player_died', {...levelProperties(elapsedMs, cheated), player_slot: slot,
+            const properties = {...levelProperties(elapsedMs, cheated), player_slot: slot,
                 x, y, location: `Level ${level.level}: ${Math.floor(x / 128) * 128}, ${Math.floor(y / 128) * 128}`,
-                cause: ['fall_death', 'death_tile', 'other'][cause] || 'other'});
+                cause: ['fall_death', 'death_tile', 'other'][cause] || 'other',
+                cause_detail: source || ['fall_death', 'death_tile', 'unknown'][cause] || 'unknown'};
+            if (mapObjectId !== null && mapObjectId !== undefined) properties.map_object_id = String(mapObjectId);
+            send('player_died', properties);
         }),
         checkpoint: safe((checkpoint, x, y, elapsedMs, cheated) => {
             if (level) send('checkpoint_reached', {...levelProperties(elapsedMs, cheated), checkpoint, x, y});
@@ -156,15 +366,24 @@ globalThis.CLAW_WEB_BUILD_ID = '20261106T062724Z';
         complete: safe((elapsedMs, score, cheated) => {
             if (!level || level.completed) return;
             progress(elapsedMs, cheated, true);
-            send('level_completed', {...levelProperties(elapsedMs, cheated), score});
+            const treasureCounts = Object.fromEntries(treasureTypes.map((type, index) =>
+                [type, levelTreasureCounts[index]]));
+            const treasureProperties = Object.fromEntries(treasureTypes.map((type, index) =>
+                [`treasure_${type}`, levelTreasureCounts[index]]));
+            send('level_completed', {...levelProperties(elapsedMs, cheated), score,
+                treasure_counts: treasureCounts, ...treasureProperties});
             level.completed = true;
         }),
+        leaderboardsEnabled: safe(() => Boolean(config.leaderboard_api && config.token)),
+        showLeaderboards: safe(showLeaderboards),
         end: safe((elapsedMs, cheated) => {
             progress(elapsedMs, cheated, true);
             if (level && !level.completed) send('level_exited', levelProperties(elapsedMs, cheated));
             level = null;
         }),
         optOut: safe(() => {
+            userOptOut = true;
+            lastMenu = null; menuStep = 0;
             stopped = true;
             queue.length = 0;
             errors.length = 0;
@@ -172,17 +391,31 @@ globalThis.CLAW_WEB_BUILD_ID = '20261106T062724Z';
             if (sdk) sdk.opt_out_capturing();
         }),
     };
-    root.addEventListener?.('pagehide', safe(() => progress(latestMs, level?.cheated, true)));
-    document.addEventListener?.('visibilitychange', safe(() => {
-        if (document.hidden) progress(latestMs, level?.cheated, true);
+    const lifecycle = (name, properties = {}) => send(name, {
+        level: level?.level, level_attempt_id: level?.level_attempt_id,
+        level_completed: level?.completed || false, active_seconds: latestMs / 1000,
+        last_menu: lastMenu?.menu, last_menu_option: lastMenu?.option, ...properties,
+    }, {send_instantly: true, transport: 'sendBeacon'});
+    root.addEventListener?.('pagehide', safe(event => {
+        if (pageLeft) return;
+        pageLeft = true;
+        progress(latestMs, level?.cheated, true);
+        lifecycle('$pageleave', {bfcache: !!event?.persisted});
+        if (!event?.persisted) reportApplicationClose();
     }));
-    try {
-        const optedOut = localStorage.getItem('claw.analytics.opt_out') === '1';
-        const url = new URL(location.href);
-        if (!config.token || !config.hosts?.includes(url.hostname)
-            || !url.pathname.startsWith(config.path_prefix || '/')
-            || optedOut || navigator.globalPrivacyControl || navigator.doNotTrack === '1'
-            || url.searchParams.has('compare')) {
+    root.addEventListener?.('pageshow', safe(event => {
+        if (!event?.persisted) return;
+        pageLeft = false;
+        lifecycle('game_page_restored');
+    }));
+    document.addEventListener?.('visibilitychange', safe(() => {
+        if (hidden === !!document.hidden) return;
+        hidden = !!document.hidden;
+        if (hidden) progress(latestMs, level?.cheated, true);
+        lifecycle(hidden ? 'game_backgrounded' : 'game_foregrounded');
+    }));
+    function initialize() { try {
+        if (userOptOut || !allowed()) {
             stopped = true;
             return;
         }
@@ -193,13 +426,17 @@ globalThis.CLAW_WEB_BUILD_ID = '20261106T062724Z';
         const assets = hosts[config.api_host];
         if (!assets) { stopped = true; return; }
         const script = document.createElement('script');
+        loading = true;
         script.async = true;
         script.src = assets + '/static/array.js';
-        script.onerror = () => { stopped = true; queue.length = 0; errors.length = 0; };
+        script.onerror = () => { loading = false; stopped = true; queue.length = 0; errors.length = 0; };
         script.onload = safe(() => {
+            loading = false;
             if (stopped || comparison()) return;
             root.posthog.init(config.token, {
                 api_host: config.api_host,
+                request_batching: true,
+                request_queue_config: {flush_interval_ms: 5000},
                 autocapture: false, capture_pageview: false, capture_pageleave: false,
                 disable_session_recording: true, disable_surveys: true,
                 capture_heatmaps: false, capture_dead_clicks: false,
@@ -221,18 +458,25 @@ globalThis.CLAW_WEB_BUILD_ID = '20261106T062724Z';
                 loaded: instance => {
                     sdk = instance;
                     if (stopped) { sdk.opt_out_capturing(); queue.length = 0; errors.length = 0; return; }
+                    // Our persisted preference is authoritative when re-enabling a previous opt-out.
+                    sdk.clear_opt_in_out_capturing();
+                    const persistedId = sdk.get_distinct_id?.();
+                    if (persistedId?.startsWith('discord:') && persistedId !== 'discord:' + discordId) sdk.reset();
                     for (const [error, properties] of errors.splice(0)) {
                         try { sdk.captureException(error, properties); } catch (_) {}
                     }
-                    for (const [name, properties] of queue.splice(0)) {
-                        try { sdk.capture(name, properties); } catch (_) {}
+                    for (const [name, properties, options] of queue.splice(0)) {
+                        try { sdk.capture(name, properties, options); } catch (_) {}
                     }
+                    syncIdentity();
                 },
             });
         });
         document.head.appendChild(script);
         root.clawAnalytics.once('$pageview');
-    } catch (_) { stopped = true; queue.length = 0; }
+    } catch (_) { stopped = true; queue.length = 0; } }
+    root.clawAnalytics.discordIdentity(root.clawDiscordActivity?.userId);
+    initialize();
 })(globalThis);
 
 </script>

@@ -15,7 +15,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-PACKS = ('BaseAssets', 'BR', 'DE', 'EN', 'ES', 'JP', 'PL', 'RU')
+LANGUAGES = ('BR', 'DE', 'EN', 'ES', 'JP', 'PL', 'RU')
+PACKS = ('BaseAssets', 'Strings', *LANGUAGES)
 MAX_FILE = 256 * 1024 * 1024
 PWA_FILES = ('manifest.webmanifest', 'service-worker.js',
              'icons/claw-192.png', 'icons/claw-512.png')
@@ -47,9 +48,10 @@ def download(url, limit, token=None):
 
 
 def validate(manifest, pack, tag):
+    install_root = 'BaseAssets' if pack == 'BaseAssets' else 'LangAssets' if pack == 'Strings' else 'LangAssets/' + pack
     if (manifest.get('schema') != 1 or manifest.get('pack') != pack
             or manifest.get('repository') != 'captainclawnet/' + pack
-            or manifest.get('install_root') != ('BaseAssets' if pack == 'BaseAssets' else 'LangAssets/' + pack)
+            or manifest.get('install_root') != install_root
             or manifest.get('tag') != tag or 'v' + manifest.get('version', '') != tag
             or not re.fullmatch(r'v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})', tag)):
         raise ValueError('Invalid manifest identity: ' + pack)
@@ -66,16 +68,22 @@ def validate(manifest, pack, tag):
                     or re.fullmatch(r'(?i:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])', part.split('.')[0])):
                 raise ValueError('Unsafe path')
         if (path.casefold() in paths or entry['asset'] in assets
-                or entry['asset'] != 'f-' + sha(path.encode('utf-8'))
+                or (entry['asset'] != path.split('/')[0] + '.INI'
+                    if pack == 'Strings' else entry['asset'] != 'f-' + sha(path.encode('utf-8')))
                 or type(entry['size']) is not int or not 0 <= entry['size'] <= MAX_FILE
                 or not re.fullmatch('[a-f0-9]{64}', entry['sha256'])):
             raise ValueError('Invalid file entry')
+        if pack == 'Strings' and (path not in {language + '/STRINGS.INI' for language in LANGUAGES}
+                                  or entry['asset'] != path.split('/')[0] + '.INI'):
+            raise ValueError('Invalid strings mapping')
         paths.add(path.casefold())
         assets.add(entry['asset'])
     for path in paths:
         parts = path.split('/')
         if any('/'.join(parts[:i]) in paths for i in range(1, len(parts))):
             raise ValueError('File/directory collision')
+    if pack == 'Strings' and paths != {language.lower() + '/strings.ini' for language in LANGUAGES}:
+        raise ValueError('Incomplete strings inventory')
 
 
 def build_site(web, output, token=None, check_url=None, fetch=download):
