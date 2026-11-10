@@ -30,10 +30,12 @@ html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#000;color:
 body.touch-controls-visible,#canvas.touch-controls-visible{cursor:none!important}
 #game{position:fixed;inset:0;width:100vw;height:100dvh;overflow:hidden}
 canvas{display:block;outline:none;background:#000}
-#canvas,#loading{position:absolute;left:50%;top:50%;width:var(--game-view-width,100vw)!important;height:var(--game-view-height,100dvh)!important;transform:translate(-50%,-50%)}
-#loading{pointer-events:none;background:#000}
+#canvas,#loading,#asset-progress{position:absolute;left:50%;top:50%;width:var(--game-view-width,100vw)!important;height:var(--game-view-height,100dvh)!important;transform:translate(-50%,-50%)}
+#loading{pointer-events:none;background:#000;opacity:0;transition:opacity 350ms ease}
+#asset-progress{z-index:2;pointer-events:none;background:transparent}
+#asset-progress[hidden]{display:none}
 html.claw-rotated #game{position:fixed;inset:0;width:100vw;height:100dvh;display:block;transform:none}
-html.claw-rotated #canvas,html.claw-rotated #loading{width:var(--game-view-width,100dvh)!important;height:var(--game-view-height,100vw)!important;transform:translate(-50%,-50%) rotate(90deg)}
+html.claw-rotated #canvas,html.claw-rotated #loading,html.claw-rotated #asset-progress{width:var(--game-view-width,100dvh)!important;height:var(--game-view-height,100vw)!important;transform:translate(-50%,-50%) rotate(90deg)}
 #loading[hidden]{display:none}
 #touch-controls[hidden]{display:none}
 #touch-controls{position:fixed;inset:0;pointer-events:none;z-index:10;user-select:none;-webkit-user-select:none}
@@ -79,6 +81,7 @@ html.claw-rotated .touch-actions{right:max(16px,env(safe-area-inset-right))}
 <div id="game">
 <canvas id="canvas" tabindex="0" aria-label="Claw 2" oncontextmenu="event.preventDefault()"></canvas>
 <canvas id="loading" role="status" aria-live="polite"></canvas>
+<canvas id="asset-progress" role="status" aria-live="polite" hidden></canvas>
 <section id="loading-error" role="alert" hidden>
 <h1 id="loading-error-title">Game error</h1>
 <textarea id="loading-error-text" readonly spellcheck="false" aria-label="Error details"></textarea>
@@ -155,16 +158,37 @@ html.claw-rotated .touch-actions{right:max(16px,env(safe-area-inset-right))}
     }
     globalThis.clawBootstrapClaw = {
         draw,
-        start() {
+        start(onReady) {
             const canvas = document.getElementById('loading');
             const context = canvas.getContext('2d');
+            let running = true;
+            let frame = 0;
+            let revealed = false;
+            const reveal = () => {
+                if (revealed) return;
+                revealed = true;
+                requestAnimationFrame(() => requestAnimationFrame(onReady));
+            };
             const render = now => {
+                if (!running) return;
                 if (!canvas.hidden && globalThis.Module?.clawPhase !== 'running')
                     draw(context, canvas.width, canvas.height, now - globalThis.clawBootstrapStarted,
                         !!globalThis.Module?.clawErrorVisible);
-                requestAnimationFrame(render);
+                frame = requestAnimationFrame(render);
             };
-            requestAnimationFrame(render);
+            frame = requestAnimationFrame(render);
+            if (image.complete && image.naturalWidth) reveal();
+            else {
+                image.addEventListener('load', reveal, {once:true});
+                image.addEventListener('error', () => {
+                    console.error('Could not decode the embedded loading animation.');
+                    reveal();
+                }, {once:true});
+            }
+            this.stop = () => {
+                running = false;
+                cancelAnimationFrame(frame);
+            };
         }
     };
 })();
@@ -173,11 +197,11 @@ html.claw-rotated .touch-actions{right:max(16px,env(safe-area-inset-right))}
 globalThis.CLAW_ANALYTICS_CONFIG = {
   "api_host" : "https://eu.i.posthog.com",
   "hosts" : [ "captainclawnet.github.io" ],
-  "leaderboard_api" : "",
+  "leaderboard_api" : "https://claw2-leaderboards.netlify.app",
   "path_prefix" : "/Claw2/",
   "token" : "phc_u9Z37RpbZc5hg35L3NUHMFg9ZhGocaAm2YrExaTPjC7h"
 };
-globalThis.CLAW_WEB_BUILD_ID = '20261110T005611Z';
+globalThis.CLAW_WEB_BUILD_ID = '20261110T223103Z';
 // Explicit events only. Analytics must never hold up or fail the game.
 (function (root) {
     'use strict';
@@ -642,11 +666,67 @@ var Module = {
     },
     clawViewport: {width: clawScreenWidth, height: clawScreenHeight},
     clawResolution: {width: clawScreenWidth, height: clawScreenHeight},
+    clawDrawAssetProgress: function (phase, detail) {
+        const canvas = document.getElementById('asset-progress');
+        if (canvas.width !== clawScreenWidth) canvas.width = clawScreenWidth;
+        if (canvas.height !== clawScreenHeight) canvas.height = clawScreenHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (!phase) return;
+        const glyphs = [
+            [0x7e,0x11,0x11,0x11,0x7e],[0x7f,0x49,0x49,0x49,0x36],[0x3e,0x41,0x41,0x41,0x22],
+            [0x7f,0x41,0x41,0x22,0x1c],[0x7f,0x49,0x49,0x49,0x41],[0x7f,0x09,0x09,0x09,0x01],
+            [0x3e,0x41,0x49,0x49,0x7a],[0x7f,0x08,0x08,0x08,0x7f],[0,0x41,0x7f,0x41,0],
+            [0x20,0x40,0x41,0x3f,0x01],[0x7f,0x08,0x14,0x22,0x41],[0x7f,0x40,0x40,0x40,0x40],
+            [0x7f,0x02,0x0c,0x02,0x7f],[0x7f,0x04,0x08,0x10,0x7f],[0x3e,0x41,0x41,0x41,0x3e],
+            [0x7f,0x09,0x09,0x09,0x06],[0x3e,0x41,0x51,0x21,0x5e],[0x7f,0x09,0x19,0x29,0x46],
+            [0x46,0x49,0x49,0x49,0x31],[0x01,0x01,0x7f,0x01,0x01],[0x3f,0x40,0x40,0x40,0x3f],
+            [0x1f,0x20,0x40,0x20,0x1f],[0x3f,0x40,0x38,0x40,0x3f],[0x63,0x14,0x08,0x14,0x63],
+            [0x07,0x08,0x70,0x08,0x07],[0x61,0x51,0x49,0x45,0x43],
+            [0x3e,0x51,0x49,0x45,0x3e],[0,0x42,0x7f,0x40,0],[0x42,0x61,0x51,0x49,0x46],
+            [0x21,0x41,0x45,0x4b,0x31],[0x18,0x14,0x12,0x7f,0x10],[0x27,0x45,0x45,0x45,0x39],
+            [0x3c,0x4a,0x49,0x49,0x30],[0x01,0x71,0x09,0x05,0x03],[0x36,0x49,0x49,0x49,0x36],
+            [0x06,0x49,0x49,0x29,0x1e],[0x20,0x10,0x08,0x04,0x02],[0,0,0,0x60,0x60],
+            [0,0x36,0x36,0,0],[0,0,0x50,0x30,0],[0x08,0x08,0x08,0x08,0x08],
+            [0x40,0x40,0x40,0x40,0x40],[0x14,0x14,0x14,0x14,0],[0x08,0x08,0x3e,0x08,0x08],
+            [0x02,0x01,0x51,0x09,0x06],[0,0,0x5f,0,0],[0,0x1c,0x22,0x41,0],
+            [0,0x41,0x22,0x1c,0],[0,0x03,0x07,0,0],[0x41,0x22,0x14,0x08,0x04],
+            [0,0x36,0x36,0,0x40],[0x63,0x13,0x08,0x64,0x63],[0x36,0x49,0x55,0x22,0x50],
+            [0x7f,0x41,0x41,0,0],[0,0,0x41,0x41,0x7f],[0x14,0x08,0x3e,0x08,0x14]
+        ];
+        const indexOf = char => char >= 'A' && char <= 'Z' ? char.charCodeAt(0)-65
+            : char >= '0' && char <= '9' ? 26+char.charCodeAt(0)-48
+            : ({'/':36,'.':37,':':38,',':39,'-':40,'_':41,'=':42,'+':43,'?':44,'!':45,
+                '(':46,')':47,"'":48,'\\':49,';':50,'%':51,'&':52,'@':53,'#':54,'[':55,']':56,'*':57}[char] ?? -1);
+        const drawText = (text, top) => {
+            const value = text.toUpperCase();
+            const scale = Math.min(2, canvas.width*.8/Math.max(1,value.length*6));
+            let left = (canvas.width-value.length*6*scale)*.5;
+            ctx.fillStyle = '#fff';
+            for (const char of value) {
+                const index = indexOf(char), glyph = index >= 0 ? glyphs[index] : null;
+                if (glyph) for (let x=0;x<5;x++) for (let y=0;y<7;y++)
+                    if (glyph[x] & (1<<y)) ctx.fillRect(left+x*scale,top+y*scale,scale,scale);
+                left += 6*scale;
+            }
+        };
+        drawText(phase,clawScreenHeight*.5-16);
+        drawText(detail,clawScreenHeight*.5+2);
+    },
     setStatus: function (text) {
         Module.clawLastStatus = text;
+        const progress = /^(VERIFYING|DOWNLOADING)\.\.\.\s+(.+?)\s+(\d+\/\d+)$/.exec(text || '');
+        const ready = Module.clawPhase === 'ready' && !text;
+        const progressElement = document.getElementById('asset-progress');
+        progressElement.hidden = !progress && !ready;
+        if (progress) {
+            Module.clawDrawAssetProgress(progress[1]+'...',progress[2]+' '+progress[3]);
+        } else if (ready) {
+            Module.clawDrawAssetProgress('READY','CLICK TO START');
+        } else Module.clawDrawAssetProgress('', '');
         if (text && /error|failed|failure|could not|cannot|unable|invalid|błąd|nie można|nie udało|nieprawidł|błędn|niepełn/i.test(text))
             Module.clawShowError(text);
-        Module.clawDrawStatus();
+        if (!progress) Module.clawDrawStatus();
     },
     clawDrawStatus: function () {
         const canvas = document.getElementById('loading');
@@ -660,30 +740,31 @@ var Module = {
         if (globalThis.clawBootstrapClaw)
             globalThis.clawBootstrapClaw.draw(ctx, viewport.width, viewport.height,
                 performance.now() - globalThis.clawBootstrapStarted, !!Module.clawErrorVisible);
-        const progress = /^(VERIFYING|DOWNLOADING)\.\.\.\s+(.+?)\s+(\d+\/\d+)$/.exec(Module.clawLastStatus || '');
-        if (progress) {
-            ctx.save();
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.shadowColor = '#000';
-            ctx.shadowBlur = 4;
-            ctx.fillStyle = '#fff';
-            ctx.font = 'bold 20px system-ui, sans-serif';
-            ctx.fillText(progress[1] + '...', viewport.width * .5, viewport.height * .5 - 14);
-            ctx.font = 'bold 16px system-ui, sans-serif';
-            ctx.fillText(progress[2].toUpperCase() + ' ' + progress[3], viewport.width * .5, viewport.height * .5 + 12);
-            ctx.restore();
-        }
     },
     noInitialRun: true,
     onRuntimeInitialized: function () {
         Module.clawPhase = 'ready';
         globalThis.clawAnalytics?.once('game_ready');
+        Module.setStatus('');
         Module.clawDrawStatus();
+        const loading = document.getElementById('loading');
+        loading.hidden = false;
+        loading.style.opacity = '0';
+        let finished = false;
+        const finishFade = () => {
+            if (finished) return;
+            finished = true;
+            globalThis.clawBootstrapClaw?.stop();
+        };
+        loading.addEventListener('transitionend', event => {
+            if (event.propertyName === 'opacity') finishFade();
+        }, {once:true});
+        setTimeout(finishFade, 400);
     },
     clawStart: function () {
             if (Module.clawPhase !== 'ready') return;
             Module.clawPhase = 'starting';
+            Module.setStatus('');
             globalThis.clawAnalytics?.once('game_start_requested');
             Module.canvas.focus();
             Module.clawDrawStatus();
@@ -771,8 +852,9 @@ Module.canvas.addEventListener('keydown', event => {
     }
 });
 globalThis.clawBootstrapStarted = performance.now();
+const loadingCanvas = document.getElementById('loading');
 Module.setStatus('Loading game…');
-globalThis.clawBootstrapClaw?.start();
+globalThis.clawBootstrapClaw?.start(() => { loadingCanvas.style.opacity = '1'; });
 document.getElementById('loading-error-copy').addEventListener('click', async () => {
     const text = document.getElementById('loading-error-text');
     const button = document.getElementById('loading-error-copy');

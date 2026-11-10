@@ -708,71 +708,51 @@ Module.clawComparisonDownload = function() {
   function targetPath(m, f) {
     return "/" + m.install_root + "/" + f.path;
   }
-  async function cachedFile(m, f) {
+  async function file(m, f, progress = () => {}) {
     const target = targetPath(m, f);
     if (loaded.has(target)) return true;
+    progress("VERIFYING");
     const cache = await cachePromise;
     const key = new URL("/__claw_asset_cache__/" + f.sha256, location.href).href;
     const saved = cache && await cache.match(key);
-    if (!saved) return null;
-    const bytes = new Uint8Array(await saved.arrayBuffer());
-    if (bytes.length !== f.size || await digest(bytes) !== f.sha256) {
-      await cache.delete(key);
-      return null;
+    let bytes;
+    if (saved) {
+      bytes = new Uint8Array(await saved.arrayBuffer());
+      if (bytes.length !== f.size || await digest(bytes) !== f.sha256) {
+        await cache.delete(key);
+        bytes = null;
+      }
     }
-    return bytes;
-  }
-  function installFile(m, f, bytes) {
-    const target = targetPath(m, f);
-    FS.mkdirTree(target.slice(0, target.lastIndexOf("/")));
+    if (!bytes) {
+      progress("DOWNLOADING");
+      bytes = await bounded(await fetch(url(m.pack + "/" + m.tag + "/" + f.asset), {
+        signal: AbortSignal.timeout(12e4)
+      }), f.size);
+      if (bytes.length !== f.size || await digest(bytes) !== f.sha256) throw Error("Asset checksum mismatch: " + f.path);
+      if (cache) await cache.put(key, new Response(bytes)).catch(() => {});
+    }
+    const directory = target.slice(0, target.lastIndexOf("/"));
+    FS.mkdirTree(directory);
     FS.writeFile(target, bytes);
     loaded.add(target);
-  }
-  async function downloadFile(m, f) {
-    const target = targetPath(m, f);
-    if (loaded.has(target)) return;
-    const cache = await cachePromise;
-    const key = new URL("/__claw_asset_cache__/" + f.sha256, location.href).href;
-    const bytes = await bounded(await fetch(url(m.pack + "/" + m.tag + "/" + f.asset), {
-      signal: AbortSignal.timeout(12e4)
-    }), f.size);
-    if (bytes.length !== f.size || await digest(bytes) !== f.sha256) throw Error("Asset checksum mismatch: " + f.path);
-    if (cache) await cache.put(key, new Response(bytes)).catch(() => {});
-    installFile(m, f, bytes);
+    return false;
   }
   function levelOf(path) {
-    const match = /^(?:TILES\/)?LEVEL(\d+)\//.exec(path) || /^ASSETS\/LEVEL(\d+)(?:_ROPE)?\./.exec(path);
+    const match = /(?:^|\/)LEVEL(\d+)(?:_ROPE)?(?:\/|\.)/i.exec(path);
     return match ? Number(match[1]) : 0;
   }
   async function load(pack, level = 0, progress = () => {}) {
     const m = await manifest(pack);
     const files = m.files.filter(f => levelOf(f.path) === level && !(languages.has(pack) && f.path.toUpperCase() === "STRINGS.INI"));
-    const prepared = new Array(files.length);
-    let cursor = 0, verified = 0;
+    let cursor = 0;
     await Promise.all(Array.from({
       length: Math.min(4, files.length)
     }, async () => {
       while (cursor < files.length) {
         const index = cursor++, f = files[index];
-        prepared[index] = await cachedFile(m, f);
-        if (prepared[index] instanceof Uint8Array) installFile(m, f, prepared[index]);
-        progress("VERIFYING", pack, ++verified, files.length, .5 * verified / Math.max(files.length, 1));
+        await file(m, f, phase => progress(phase, pack, index + 1, files.length, (index + 1) / Math.max(files.length, 1)));
       }
     }));
-    const missing = files.filter((f, index) => prepared[index] === null);
-    if (files.length && !missing.length) progress("VERIFYING", pack, files.length, files.length, 1);
-    cursor = 0;
-    let started = 0;
-    await Promise.all(Array.from({
-      length: Math.min(4, missing.length)
-    }, async () => {
-      while (cursor < missing.length) {
-        const f = missing[cursor++];
-        progress("DOWNLOADING", pack, ++started, missing.length, .5 + .5 * (started - 1) / Math.max(missing.length, 1));
-        await downloadFile(m, f);
-      }
-    }));
-    if (missing.length) progress("DOWNLOADING", pack, missing.length, missing.length, 1);
     FS.mkdirTree("/" + m.install_root);
     return m;
   }
@@ -780,13 +760,7 @@ Module.clawComparisonDownload = function() {
     const m = await manifest("Strings");
     const entry = m.files.find(f => f.path === language + "/STRINGS.INI");
     if (!entry) throw Error("Strings release is missing " + language + ".INI");
-    const cached = await cachedFile(m, entry);
-    progress("VERIFYING", "STRINGS", 1, 1);
-    if (cached instanceof Uint8Array) installFile(m, entry, cached); else if (cached === null) {
-      progress("DOWNLOADING", "STRINGS", 1, 1);
-      await downloadFile(m, entry);
-      progress("DOWNLOADING", "STRINGS", 1, 1);
-    }
+    await file(m, entry, phase => progress(phase, "STRINGS", 1, 1));
   }
   const showProgress = (phase, detail, done, total) => Module.setStatus(phase + "... " + detail + " " + done + "/" + total);
   Module.clawLanguages = {};
