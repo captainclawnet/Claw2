@@ -86,16 +86,30 @@ globalThis.clawDiscordActivity = {
   status: 0,
   error: "",
   generation: 0,
-  sessionToken: null,
+  _sessionToken: null,
   activeConnection: null,
+  get sessionToken() {
+    return this._sessionToken;
+  },
+  set sessionToken(value) {
+    this._sessionToken = value;
+    try {
+      const key = "claw.discord.session:" + this.apiOrigin;
+      if (value) localStorage.setItem(key, value); else localStorage.removeItem(key);
+    } catch (_) {}
+  },
   apiOrigin: globalThis.clawDiscordConfig.apiOrigin,
   async connect(interactive = true) {
     if (interactive && (this.pending || this.status === 3)) return;
     const generation = ++this.generation;
-    this.pending = interactive;
+    let savedSession = null;
+    try {
+      savedSession = localStorage.getItem("claw.discord.session:" + this.apiOrigin);
+    } catch (_) {}
+    this.pending = true;
     this.status = interactive ? 1 : 0;
     this.error = "";
-    if (!interactive || !this.apiOrigin) {
+    if ((!interactive && !savedSession) || !this.apiOrigin) {
       if (interactive) {
         this.status = 4;
         this.error = "Discord login server is unavailable.";
@@ -113,16 +127,19 @@ globalThis.clawDiscordActivity = {
     this.activeConnection = connection;
     const deadline = Date.now() + 3e5;
     try {
-      const sessionToken = await new Promise((resolve, reject) => {
+      const sessionToken = (!interactive && savedSession) || await new Promise((resolve, reject) => {
         connection.reject = reject;
         connection.onMessage = event => {
           if (event.origin !== this.apiOrigin || event.source !== connection.tab || event.data?.type !== "claw-discord-auth" || typeof event.data.session !== "string") return;
           clearInterval(connection.closePoll);
+          connection.tab.close();
           resolve(event.data.session);
         };
         window.addEventListener("message", connection.onMessage);
         // Open synchronously, before awaiting network I/O, to preserve user activation.
-        connection.tab = window.open(new URL("/auth/discord", this.apiOrigin).href, "_blank");
+        const loginUrl = new URL("/auth/discord", this.apiOrigin);
+        loginUrl.searchParams.set("origin", window.location.origin);
+        connection.tab = window.open(loginUrl.href, "_blank");
         if (!connection.tab) {
           reject(new Error("Allow pop-ups for this site to sign in to Discord."));
           return;
@@ -147,6 +164,7 @@ globalThis.clawDiscordActivity = {
         signal: connection.abort.signal
       });
       if (generation !== this.generation) return;
+      if (response.status === 401 || response.status === 403) this.sessionToken = null;
       if (!response.ok) throw new Error("Discord login server is unavailable.");
       const {user} = await response.json();
       if (generation !== this.generation) return;
@@ -214,6 +232,7 @@ globalThis.clawWebLobbies = {
   messages: [],
   nextPoll: 0,
   polling: false,
+  restored: false,
   revision: 0,
   async request(operation, value) {
     const activity = globalThis.clawDiscordActivity;
@@ -269,11 +288,12 @@ globalThis.clawWebLobbies = {
     return id;
   },
   tick() {
-    if (this.polling || !this.session || globalThis.clawDiscordActivity.status !== 3 || Date.now() < this.nextPoll) return;
+    if (this.polling || (!this.session && this.restored) || globalThis.clawDiscordActivity.status !== 3 || Date.now() < this.nextPoll) return;
     this.polling = true;
     this.tail = this.tail.catch(() => {}).then(async () => {
       try {
         await this.request("state");
+        this.restored = true;
       } catch (error) {
         globalThis.clawDiscordActivity.error = error.message;
       } finally {
@@ -286,7 +306,7 @@ globalThis.clawWebLobbies = {
 
 // end include: D:/Projects/Claw2/src/platform/web/discord/lobbies.js
 // include: D:/Projects/Claw2/build/web/claw-text-shader-source.js
-Module.clawTextShaderSource = "uniform sampler2D texture;\nuniform vec2 resolution;\nuniform vec4 fillColor;\nuniform vec4 outlineColor;\nuniform float outlineThickness;\nuniform float bevelRadius;\nuniform float bevelStrength;\nuniform float goldMaterialStrength;\nuniform float ruggedness;\nuniform float extrusionDepth;\nuniform float specularStrength;\nuniform float reliefHighlightStrength;\nuniform vec2 faceVerticalBounds;\nuniform float shadowStrength;\nuniform vec2 shadowOffset;\nuniform float shadowSoftness;\nuniform vec4 glowColor;\nuniform float glowRadius;\nuniform float glowSoftness;\nuniform float bevelSmoothing;\nuniform float faceExpansion;\nfloat hash(vec2 p) {\n    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);\n}\nfloat noise(vec2 p) {\n    vec2 c = floor(p), f = fract(p);\n    f = f * f * (3.0 - 2.0 * f);\n    return mix(mix(hash(c), hash(c + vec2(1.0, 0.0)), f.x),\n        mix(hash(c + vec2(0.0, 1.0)), hash(c + vec2(1.0)), f.x), f.y);\n}\nfloat distanceAt(vec2 p) {\n    vec2 warp = vec2(noise(p * 0.19), noise(p * 0.19 + 31.0)) - 0.5;\n    p += warp * ruggedness * 0.65;\n    float distance = (texture2D(texture, p / resolution).r * 2.0 - 1.0) * 32.0;\n    if (faceExpansion > 0.0) {\n        // Add stem weight sideways without moving cap tops or baselines.\n        vec2 gradient = vec2(\n            texture2D(texture, (p + vec2(1.0, 0.0)) / resolution).r - texture2D(texture, (p - vec2(1.0, 0.0)) / resolution).r,\n            texture2D(texture, (p + vec2(0.0, 1.0)) / resolution).r - texture2D(texture, (p - vec2(0.0, 1.0)) / resolution).r);\n        distance += faceExpansion * abs(gradient.x) / max(0.0001, length(gradient));\n    }\n    return distance;\n}\nfloat relief(vec2 p) {\n    float d = max(0.0, distanceAt(p));\n    float variation = (noise(p * 0.12 + 7.0) - 0.5) * ruggedness * 0.42;\n    return min(d, max(0.5, bevelRadius)) * (1.0 + variation);\n}\nvoid main() {\n    vec2 p = gl_TexCoord[0].xy * resolution;\n    float d = distanceAt(p);\n    float face = smoothstep(-0.6, 0.6, d + min(0.0, outlineThickness));\n    float silhouette = smoothstep(-0.6, 0.6, d + max(0.0, outlineThickness));\n    float stepSize = 0.65 + bevelSmoothing;\n    vec2 slope = vec2(relief(p + vec2(stepSize, 0.0)) - relief(p - vec2(stepSize, 0.0)),\n        relief(p + vec2(0.0, stepSize)) - relief(p - vec2(0.0, stepSize))) / (2.0 * stepSize);\n    vec3 normal = normalize(vec3(-slope * bevelStrength * 0.65, 1.0));\n    vec3 light = normalize(vec3(-0.65, -0.85, 0.8));\n    float diffuse = max(0.0, dot(normal, light));\n    float specular = pow(max(0.0, dot(normal, normalize(light + vec3(0.0, 0.0, 1.0)))), 12.0);\n    float patina = mix(0.5, noise(p * 0.085 + 13.0), min(ruggedness, 1.0));\n    vec3 base = mix(fillColor.rgb, vec3(0.83, 0.65, 0.25), goldMaterialStrength);\n    vec3 color = base * (0.38 + diffuse * 0.90) * (0.9 + 0.2 * patina);\n    // Broad variations break up the polished highlight without adding grain.\n    color += mix(vec3(1.0), vec3(1.0, 0.94, 0.72), goldMaterialStrength)\n        * specular * specularStrength * (0.36 + 0.22 * patina);\n    color = mix(base, color, clamp(bevelStrength, 0.0, 1.0));\n    // Small specular patches INSIDE the raised face, away from its silhouette.\n    // A diagonal relief normal selects upper-left corners rather than tracing edges.\n    float insetFace = smoothstep(1.3, 1.8, d);\n    float bevelPatch = 1.0 - smoothstep(2.5, 3.5, d);\n    // A wider derivative keeps tiny raster irregularities from becoming white speckles.\n    const float facetStep = 1.25;\n    vec2 facetSlope = vec2(relief(p + vec2(facetStep, 0.0)) - relief(p - vec2(facetStep, 0.0)),\n        relief(p + vec2(0.0, facetStep)) - relief(p - vec2(0.0, facetStep))) / (2.0 * facetStep);\n    float slopeLength = length(facetSlope);\n    vec2 facetDirection = facetSlope / max(slopeLength, 0.0001);\n    float cornerFacing = pow(max(0.0, dot(facetDirection, normalize(vec2(1.0, 1.0)))), 12.0);\n    float raisedFacet = smoothstep(0.15, 0.55, slopeLength);\n    // Flat serif caps also catch light at their inset upper-left corner.\n    // Nearby left/top boundaries locate that corner without lighting a whole edge.\n    float leftCorner = 1.0 - smoothstep(0.0, 1.0, distanceAt(p - vec2(3.5, 0.0)));\n    float topCorner = 1.0 - smoothstep(0.0, 1.0, distanceAt(p - vec2(0.0, 3.5)));\n    float serifFacet = leftCorner * topCorner;\n    float glint = insetFace * bevelPatch * max(cornerFacing * raisedFacet, serifFacet);\n    // These single-line gold overlays catch the strongest reflection near their cap tops.\n    float faceY = (p.y - faceVerticalBounds.x) / max(1.0, faceVerticalBounds.y);\n    float capHighlight = 1.0 - smoothstep(0.18, 0.62, faceY);\n    glint = min(1.0, glint * 1.12) * capHighlight;\n    color = mix(color, vec3(1.0, 0.99, 0.88), reliefHighlightStrength * glint);\n    float side = silhouette;\n    for (int i = 1; i <= 24; ++i) {\n        vec2 offset = vec2(0.65, 0.85) * extrusionDepth * float(i) / 24.0;\n        side = max(side, smoothstep(-0.6, 0.6, distanceAt(p - offset) + max(0.0, outlineThickness)));\n    }\n    float shadow = smoothstep(-shadowSoftness, shadowSoftness, distanceAt(p - shadowOffset\n        - vec2(0.65, 0.85) * extrusionDepth)) * 0.72 * fillColor.a;\n    float sideAlpha = max(0.0, side - silhouette) * fillColor.a;\n    float outlineAlpha = max(0.0, silhouette - face) * outlineColor.a;\n    float faceAlpha = face * fillColor.a;\n    float alpha = faceAlpha + outlineAlpha + sideAlpha;\n    vec3 rgb = color * faceAlpha + outlineColor.rgb * outlineAlpha\n        + base * vec3(0.30, 0.24, 0.18) * sideAlpha;\n    if (glowRadius > 0.0 && glowColor.a > 0.0) {\n        float outside = max(0.0, -d);\n        float glow = (1.0 - smoothstep(mix(glowRadius - 0.6, 0.0, glowSoftness), glowRadius + 0.6, outside))\n            * glowColor.a * fillColor.a;\n        float innerRim = 1.0 - smoothstep(glowRadius * 0.78, glowRadius * 0.78 + 0.6, outside);\n        vec3 haloColor = mix(glowColor.rgb * vec3(0.67, 0.48, 0.20), glowColor.rgb, innerRim);\n        rgb += haloColor * glow * (1.0 - alpha);\n        alpha += glow * (1.0 - alpha);\n    }\n    shadow *= shadowStrength;\n    rgb += vec3(0.025, 0.018, 0.01) * shadow * (1.0 - alpha);\n    alpha += shadow * (1.0 - alpha);\n    gl_FragColor = vec4(rgb, alpha);\n}\n";
+Module.clawTextShaderSource = "uniform sampler2D texture;\nuniform vec2 resolution;\nuniform vec4 fillColor;\nuniform vec4 outlineColor;\nuniform float outlineThickness;\nuniform float bevelRadius;\nuniform float bevelStrength;\nuniform float goldMaterialStrength;\nuniform float ruggedness;\nuniform float extrusionDepth;\nuniform float specularStrength;\nuniform float reliefHighlightStrength;\nuniform vec2 faceVerticalBounds;\nuniform float shadowStrength;\nuniform vec2 shadowOffset;\nuniform float shadowSoftness;\nuniform vec4 glowColor;\nuniform float glowRadius;\nuniform float glowSoftness;\nuniform float bevelSmoothing;\nuniform float faceExpansion;\nfloat hash(vec2 p) {\n    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);\n}\nfloat noise(vec2 p) {\n    vec2 c = floor(p), f = fract(p);\n    f = f * f * (3.0 - 2.0 * f);\n    return mix(mix(hash(c), hash(c + vec2(1.0, 0.0)), f.x),\n        mix(hash(c + vec2(0.0, 1.0)), hash(c + vec2(1.0)), f.x), f.y);\n}\nfloat distanceAt(vec2 p) {\n    vec2 warp = vec2(noise(p * 0.19), noise(p * 0.19 + 31.0)) - 0.5;\n    p += warp * ruggedness * 0.65;\n    float distance = (texture2D(texture, p / resolution).r * 2.0 - 1.0) * 32.0;\n    if (faceExpansion > 0.0) {\n        // Add stem weight sideways without moving cap tops or baselines.\n        vec2 gradient = vec2(\n            texture2D(texture, (p + vec2(1.0, 0.0)) / resolution).r - texture2D(texture, (p - vec2(1.0, 0.0)) / resolution).r,\n            texture2D(texture, (p + vec2(0.0, 1.0)) / resolution).r - texture2D(texture, (p - vec2(0.0, 1.0)) / resolution).r);\n        distance += faceExpansion * abs(gradient.x) / max(0.0001, length(gradient));\n    }\n    return distance;\n}\nfloat relief(vec2 p) {\n    float d = max(0.0, distanceAt(p));\n    float variation = (noise(p * 0.12 + 7.0) - 0.5) * ruggedness * 0.42;\n    return min(d, max(0.5, bevelRadius)) * (1.0 + variation);\n}\nvoid main() {\n    vec2 p = gl_TexCoord[0].xy * resolution;\n    float d = distanceAt(p);\n    float face = smoothstep(-0.6, 0.6, d + min(0.0, outlineThickness));\n    float silhouette = smoothstep(-0.6, 0.6, d + max(0.0, outlineThickness));\n    // Keep a short dark band, then a broad falloff. A small face contribution\n    // preserves thin serifs instead of turning them into solid outline.\n    if (outlineThickness < 0.0) {\n        float insetWidth = -outlineThickness;\n        float inset = 1.0 - smoothstep(insetWidth * 0.25,\n            insetWidth * 1.75, max(0.0, d));\n        face = silhouette * (1.0 - 0.82 * inset);\n    }\n    float stepSize = 0.65 + bevelSmoothing;\n    vec2 slope = vec2(relief(p + vec2(stepSize, 0.0)) - relief(p - vec2(stepSize, 0.0)),\n        relief(p + vec2(0.0, stepSize)) - relief(p - vec2(0.0, stepSize))) / (2.0 * stepSize);\n    vec3 normal = normalize(vec3(-slope * bevelStrength * 0.65, 1.0));\n    vec3 light = normalize(vec3(-0.65, -0.85, 0.8));\n    float diffuse = max(0.0, dot(normal, light));\n    float specular = pow(max(0.0, dot(normal, normalize(light + vec3(0.0, 0.0, 1.0)))), 12.0);\n    float patina = mix(0.5, noise(p * 0.085 + 13.0), min(ruggedness, 1.0));\n    vec3 base = mix(fillColor.rgb, vec3(0.83, 0.65, 0.25), goldMaterialStrength);\n    vec3 color = base * (0.38 + diffuse * 0.90) * (0.9 + 0.2 * patina);\n    // Broad variations break up the polished highlight without adding grain.\n    color += mix(vec3(1.0), vec3(1.0, 0.94, 0.72), goldMaterialStrength)\n        * specular * specularStrength * (0.36 + 0.22 * patina);\n    color = mix(base, color, clamp(bevelStrength, 0.0, 1.0));\n    // Small specular patches INSIDE the raised face, away from its silhouette.\n    // A diagonal relief normal selects upper-left corners rather than tracing edges.\n    float insetFace = smoothstep(1.3, 1.8, d);\n    float bevelPatch = 1.0 - smoothstep(2.5, 3.5, d);\n    // A wider derivative keeps tiny raster irregularities from becoming white speckles.\n    const float facetStep = 1.25;\n    vec2 facetSlope = vec2(relief(p + vec2(facetStep, 0.0)) - relief(p - vec2(facetStep, 0.0)),\n        relief(p + vec2(0.0, facetStep)) - relief(p - vec2(0.0, facetStep))) / (2.0 * facetStep);\n    float slopeLength = length(facetSlope);\n    vec2 facetDirection = facetSlope / max(slopeLength, 0.0001);\n    float cornerFacing = pow(max(0.0, dot(facetDirection, normalize(vec2(1.0, 1.0)))), 12.0);\n    float raisedFacet = smoothstep(0.15, 0.55, slopeLength);\n    // Flat serif caps also catch light at their inset upper-left corner.\n    // Nearby left/top boundaries locate that corner without lighting a whole edge.\n    float leftCorner = 1.0 - smoothstep(0.0, 1.0, distanceAt(p - vec2(3.5, 0.0)));\n    float topCorner = 1.0 - smoothstep(0.0, 1.0, distanceAt(p - vec2(0.0, 3.5)));\n    float serifFacet = leftCorner * topCorner;\n    float glint = insetFace * bevelPatch * max(cornerFacing * raisedFacet, serifFacet);\n    // These single-line gold overlays catch the strongest reflection near their cap tops.\n    float faceY = (p.y - faceVerticalBounds.x) / max(1.0, faceVerticalBounds.y);\n    float capHighlight = 1.0 - smoothstep(0.18, 0.62, faceY);\n    glint = min(1.0, glint * 1.12) * capHighlight;\n    color = mix(color, vec3(1.0, 0.99, 0.88), reliefHighlightStrength * glint);\n    float side = silhouette;\n    for (int i = 1; i <= 24; ++i) {\n        vec2 offset = vec2(0.65, 0.85) * extrusionDepth * float(i) / 24.0;\n        side = max(side, smoothstep(-0.6, 0.6, distanceAt(p - offset) + max(0.0, outlineThickness)));\n    }\n    float shadow = smoothstep(-shadowSoftness, shadowSoftness, distanceAt(p - shadowOffset\n        - vec2(0.65, 0.85) * extrusionDepth)) * 0.72 * fillColor.a;\n    float sideAlpha = max(0.0, side - silhouette) * fillColor.a;\n    float outlineAlpha = max(0.0, silhouette - face) * outlineColor.a;\n    float faceAlpha = face * fillColor.a;\n    float alpha = faceAlpha + outlineAlpha + sideAlpha;\n    vec3 rgb = color * faceAlpha + outlineColor.rgb * outlineAlpha\n        + base * vec3(0.30, 0.24, 0.18) * sideAlpha;\n    if (glowRadius > 0.0 && glowColor.a > 0.0) {\n        float outside = max(0.0, -d);\n        float glow = (1.0 - smoothstep(mix(glowRadius - 0.6, 0.0, glowSoftness), glowRadius + 0.6, outside))\n            * glowColor.a * fillColor.a;\n        float innerRim = 1.0 - smoothstep(glowRadius * 0.78, glowRadius * 0.78 + 0.6, outside);\n        vec3 haloColor = mix(glowColor.rgb * vec3(0.67, 0.48, 0.20), glowColor.rgb, innerRim);\n        rgb += haloColor * glow * (1.0 - alpha);\n        alpha += glow * (1.0 - alpha);\n    }\n    shadow *= shadowStrength;\n    rgb += vec3(0.025, 0.018, 0.01) * shadow * (1.0 - alpha);\n    alpha += shadow * (1.0 - alpha);\n    gl_FragColor = vec4(rgb, alpha);\n}\n";
 
 // end include: D:/Projects/Claw2/build/web/claw-text-shader-source.js
 // include: D:/Projects/Claw2/src/platform/web/touch-controls.js
@@ -1103,10 +1123,6 @@ Module.clawComparisonDownload = function() {
       } catch (_) {}
       // PLAY/comparison startup uses EN even when no saved language exists.
       if (Module.clawComparisonArguments?.().length) language = "EN";
-      if (globalThis.clawDiscordActivity?.quickPlayLevel) {
-        language = language || "EN";
-        audioLanguage = audioLanguage || language;
-      }
       if (packs.has(language) && language !== "BaseAssets") {
         await load(language, 0, showProgress);
         await loadStrings(language, showProgress);
@@ -9599,6 +9615,16 @@ var _emscripten_websocket_send_binary = (socketId, binaryData, dataLength) => {
   return 0;
 };
 
+var _emscripten_websocket_send_utf8_text = (socketId, textData) => {
+  var socket = WS.getSocket(socketId);
+  if (!socket) {
+    return -3;
+  }
+  var str = UTF8ToString(textData);
+  socket.send(str);
+  return 0;
+};
+
 var _emscripten_websocket_set_onclose_callback_on_thread = (socketId, userData, callbackFunc, thread) => {
   var socket = WS.getSocket(socketId);
   if (!socket) {
@@ -10088,7 +10114,7 @@ var missingLibrarySymbols = [ "writeI53ToI64Clamped", "writeI53ToI64Signaling", 
 
 missingLibrarySymbols.forEach(missingLibrarySymbol);
 
-var unexportedSymbols = [ "run", "out", "err", "abort", "wasmExports", "writeStackCookie", "checkStackCookie", "writeI53ToI64", "readI53FromI64", "readI53FromU64", "INT53_MAX", "INT53_MIN", "bigintToI53Checked", "HEAP8", "HEAPU8", "HEAP16", "HEAPU16", "HEAP32", "HEAPU32", "HEAPF32", "HEAPF64", "HEAP64", "HEAPU64", "stackSave", "stackRestore", "stackAlloc", "setTempRet0", "ptrToString", "exitJS", "getHeapMax", "growMemory", "ENV", "ERRNO_CODES", "strError", "DNS", "Protocols", "timers", "warnOnce", "readEmAsmArgsArray", "readEmAsmArgs", "runEmAsmFunction", "runMainThreadEmAsm", "jstoi_q", "getExecutableName", "autoResumeAudioContext", "dynCall", "handleException", "keepRuntimeAlive", "callUserCallback", "maybeExit", "asyncLoad", "alignMemory", "mmapAlloc", "HandleAllocator", "wasmTable", "wasmMemory", "getUniqueRunDependency", "noExitRuntime", "addOnPreRun", "addOnExit", "addOnPostRun", "freeTableIndexes", "functionsInTableMap", "setValue", "PATH", "PATH_FS", "UTF8Decoder", "UTF8ArrayToString", "UTF8ToString", "stringToUTF8Array", "stringToUTF8", "lengthBytesUTF8", "intArrayFromString", "UTF16Decoder", "stringToNewUTF8", "stringToUTF8OnStack", "writeArrayToMemory", "JSEvents", "registerKeyEventCallback", "specialHTMLTargets", "maybeCStringToJsString", "findEventTarget", "findCanvasEventTarget", "getBoundingClientRect", "fillMouseEventData", "registerWheelEventCallback", "registerUiEventCallback", "registerFocusEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "screenOrientation", "fillOrientationChangeEventData", "registerOrientationChangeEventCallback", "fillFullscreenChangeEventData", "registerFullscreenChangeEventCallback", "callCanvasResizedCallback", "JSEvents_requestFullscreen", "JSEvents_resizeCanvasForFullscreen", "registerRestoreOldStyle", "setLetterbox", "currentFullscreenStrategy", "restoreOldWindowedStyle", "doRequestFullscreen", "fillPointerlockChangeEventData", "registerPointerlockChangeEventCallback", "requestPointerLock", "fillVisibilityChangeEventData", "registerVisibilityChangeEventCallback", "fillGamepadEventData", "registerGamepadEventCallback", "registerBeforeUnloadEventCallback", "setCanvasElementSize", "getCanvasElementSize", "UNWIND_CACHE", "ExitStatus", "getEnvStrings", "checkWasiClock", "doReadv", "doWritev", "initRandomFill", "randomFill", "safeSetTimeout", "emSetImmediate", "emClearImmediate", "promiseMap", "uncaughtExceptionCount", "exceptionLast", "exceptionCaught", "ExceptionInfo", "findMatchingCatch", "getExceptionMessageCommon", "incrementExceptionRefcount", "decrementExceptionRefcount", "getExceptionMessage", "Browser", "requestFullscreen", "setCanvasSize", "createContext", "wget", "MONTH_DAYS_REGULAR", "MONTH_DAYS_LEAP", "MONTH_DAYS_REGULAR_CUMULATIVE", "MONTH_DAYS_LEAP_CUMULATIVE", "isLeapYear", "ydayFromDate", "SYSCALLS", "preloadPlugins", "FS_createPreloadedFile", "FS_modeStringToFlags", "FS_getMode", "FS_fileDataToTypedArray", "FS_stdin_getChar_buffer", "FS_stdin_getChar", "FS_readFile", "FS", "FS_root", "FS_mounts", "FS_devices", "FS_streams", "FS_nextInode", "FS_nameTable", "FS_currentPath", "FS_initialized", "FS_ignorePermissions", "FS_syncFSRequests", "FS_lookupPath", "FS_getPath", "FS_hashName", "FS_hashAddNode", "FS_hashRemoveNode", "FS_lookupNode", "FS_createNode", "FS_destroyNode", "FS_isRoot", "FS_isMountpoint", "FS_isFile", "FS_isDir", "FS_isLink", "FS_isChrdev", "FS_isBlkdev", "FS_isFIFO", "FS_isSocket", "FS_flagsToPermissionString", "FS_nodePermissions", "FS_mayLookup", "FS_mayCreate", "FS_mayDelete", "FS_mayOpen", "FS_checkOpExists", "FS_nextfd", "FS_getStreamChecked", "FS_getStream", "FS_createStream", "FS_closeStream", "FS_dupStream", "FS_doSetAttr", "FS_chrdev_stream_ops", "FS_major", "FS_minor", "FS_makedev", "FS_registerDevice", "FS_getDevice", "FS_getMounts", "FS_syncfs", "FS_mount", "FS_unmount", "FS_lookup", "FS_mknod", "FS_statfs", "FS_statfsStream", "FS_statfsNode", "FS_create", "FS_mkdir", "FS_mkdev", "FS_symlink", "FS_link", "FS_rename", "FS_rmdir", "FS_readdir", "FS_readlink", "FS_stat", "FS_fstat", "FS_lstat", "FS_doChmod", "FS_chmod", "FS_lchmod", "FS_fchmod", "FS_doChown", "FS_chown", "FS_lchown", "FS_fchown", "FS_doTruncate", "FS_truncate", "FS_ftruncate", "FS_utime", "FS_open", "FS_close", "FS_isClosed", "FS_llseek", "FS_read", "FS_write", "FS_mmap", "FS_msync", "FS_ioctl", "FS_writeFile", "FS_cwd", "FS_chdir", "FS_createDefaultDirectories", "FS_createDefaultDevices", "FS_createSpecialDirectories", "FS_createStandardStreams", "FS_staticInit", "FS_init", "FS_quit", "FS_analyzePath", "FS_createFile", "FS_forceLoadFile", "MEMFS", "TTY", "PIPEFS", "SOCKFS", "tempFixedLengthArray", "miniTempWebGLFloatBuffers", "miniTempWebGLIntBuffers", "heapObjectForWebGLType", "toTypedArrayIndex", "webgl_enable_ANGLE_instanced_arrays", "webgl_enable_OES_vertex_array_object", "webgl_enable_WEBGL_draw_buffers", "webgl_enable_WEBGL_multi_draw", "webgl_enable_EXT_polygon_offset_clamp", "webgl_enable_EXT_clip_control", "webgl_enable_WEBGL_polygon_mode", "GL", "emscriptenWebGLGet", "computeUnpackAlignedImageSize", "colorChannelsInGlTextureFormat", "emscriptenWebGLGetTexPixelData", "emscriptenWebGLGetUniform", "webglGetProgramUniformLocation", "webglGetUniformLocation", "webglPrepareUniformLocationsBeforeFirstUse", "webglGetLeftBracePos", "emscriptenWebGLGetVertexAttrib", "__glGetActiveAttribOrUniform", "AL", "GLUT", "EGL", "GLEW", "IDBStore", "SDL", "SDL_gfx", "print", "printErr", "jstoi_s", "IDBFS", "webSockets", "WS" ];
+var unexportedSymbols = [ "run", "out", "err", "abort", "wasmExports", "writeStackCookie", "checkStackCookie", "writeI53ToI64", "readI53FromI64", "readI53FromU64", "INT53_MAX", "INT53_MIN", "bigintToI53Checked", "HEAP8", "HEAPU8", "HEAP16", "HEAPU16", "HEAP32", "HEAPU32", "HEAPF32", "HEAPF64", "HEAP64", "HEAPU64", "stackSave", "stackRestore", "stackAlloc", "setTempRet0", "ptrToString", "exitJS", "getHeapMax", "growMemory", "ENV", "ERRNO_CODES", "strError", "DNS", "Protocols", "timers", "warnOnce", "readEmAsmArgsArray", "readEmAsmArgs", "runEmAsmFunction", "runMainThreadEmAsm", "jstoi_q", "getExecutableName", "autoResumeAudioContext", "dynCall", "handleException", "keepRuntimeAlive", "callUserCallback", "maybeExit", "asyncLoad", "alignMemory", "mmapAlloc", "HandleAllocator", "wasmTable", "wasmMemory", "getUniqueRunDependency", "noExitRuntime", "addOnPreRun", "addOnExit", "addOnPostRun", "freeTableIndexes", "functionsInTableMap", "setValue", "PATH", "PATH_FS", "UTF8Decoder", "UTF8ArrayToString", "UTF8ToString", "stringToUTF8Array", "stringToUTF8", "lengthBytesUTF8", "intArrayFromString", "UTF16Decoder", "stringToNewUTF8", "stringToUTF8OnStack", "writeArrayToMemory", "JSEvents", "registerKeyEventCallback", "specialHTMLTargets", "maybeCStringToJsString", "findEventTarget", "findCanvasEventTarget", "getBoundingClientRect", "fillMouseEventData", "registerWheelEventCallback", "registerUiEventCallback", "registerFocusEventCallback", "fillDeviceMotionEventData", "registerDeviceMotionEventCallback", "screenOrientation", "fillOrientationChangeEventData", "registerOrientationChangeEventCallback", "fillFullscreenChangeEventData", "registerFullscreenChangeEventCallback", "callCanvasResizedCallback", "JSEvents_requestFullscreen", "JSEvents_resizeCanvasForFullscreen", "registerRestoreOldStyle", "setLetterbox", "currentFullscreenStrategy", "restoreOldWindowedStyle", "doRequestFullscreen", "fillPointerlockChangeEventData", "registerPointerlockChangeEventCallback", "requestPointerLock", "fillVisibilityChangeEventData", "registerVisibilityChangeEventCallback", "fillGamepadEventData", "registerGamepadEventCallback", "registerBeforeUnloadEventCallback", "setCanvasElementSize", "getCanvasElementSize", "UNWIND_CACHE", "ExitStatus", "getEnvStrings", "checkWasiClock", "doReadv", "doWritev", "initRandomFill", "randomFill", "safeSetTimeout", "emSetImmediate", "emClearImmediate", "promiseMap", "uncaughtExceptionCount", "exceptionLast", "exceptionCaught", "ExceptionInfo", "findMatchingCatch", "getExceptionMessageCommon", "incrementExceptionRefcount", "decrementExceptionRefcount", "getExceptionMessage", "Browser", "requestFullscreen", "setCanvasSize", "createContext", "wget", "MONTH_DAYS_REGULAR", "MONTH_DAYS_LEAP", "MONTH_DAYS_REGULAR_CUMULATIVE", "MONTH_DAYS_LEAP_CUMULATIVE", "isLeapYear", "ydayFromDate", "SYSCALLS", "preloadPlugins", "FS_createPreloadedFile", "FS_modeStringToFlags", "FS_getMode", "FS_fileDataToTypedArray", "FS_stdin_getChar_buffer", "FS_stdin_getChar", "FS_readFile", "FS", "FS_root", "FS_mounts", "FS_devices", "FS_streams", "FS_nextInode", "FS_nameTable", "FS_currentPath", "FS_initialized", "FS_ignorePermissions", "FS_syncFSRequests", "FS_lookupPath", "FS_getPath", "FS_hashName", "FS_hashAddNode", "FS_hashRemoveNode", "FS_lookupNode", "FS_createNode", "FS_destroyNode", "FS_isRoot", "FS_isMountpoint", "FS_isFile", "FS_isDir", "FS_isLink", "FS_isChrdev", "FS_isBlkdev", "FS_isFIFO", "FS_isSocket", "FS_flagsToPermissionString", "FS_nodePermissions", "FS_mayLookup", "FS_mayCreate", "FS_mayDelete", "FS_mayOpen", "FS_checkOpExists", "FS_nextfd", "FS_getStreamChecked", "FS_getStream", "FS_createStream", "FS_closeStream", "FS_dupStream", "FS_doSetAttr", "FS_chrdev_stream_ops", "FS_major", "FS_minor", "FS_makedev", "FS_registerDevice", "FS_getDevice", "FS_getMounts", "FS_syncfs", "FS_mount", "FS_unmount", "FS_lookup", "FS_mknod", "FS_statfs", "FS_statfsStream", "FS_statfsNode", "FS_create", "FS_mkdir", "FS_mkdev", "FS_symlink", "FS_link", "FS_rename", "FS_rmdir", "FS_readdir", "FS_readlink", "FS_stat", "FS_fstat", "FS_lstat", "FS_doChmod", "FS_chmod", "FS_lchmod", "FS_fchmod", "FS_doChown", "FS_chown", "FS_lchown", "FS_fchown", "FS_doTruncate", "FS_truncate", "FS_ftruncate", "FS_utime", "FS_open", "FS_close", "FS_isClosed", "FS_llseek", "FS_read", "FS_write", "FS_mmap", "FS_msync", "FS_ioctl", "FS_writeFile", "FS_cwd", "FS_chdir", "FS_createDefaultDirectories", "FS_createDefaultDevices", "FS_createSpecialDirectories", "FS_createStandardStreams", "FS_staticInit", "FS_init", "FS_quit", "FS_analyzePath", "FS_createFile", "FS_forceLoadFile", "MEMFS", "TTY", "PIPEFS", "SOCKFS", "tempFixedLengthArray", "miniTempWebGLFloatBuffers", "miniTempWebGLIntBuffers", "heapObjectForWebGLType", "toTypedArrayIndex", "webgl_enable_ANGLE_instanced_arrays", "webgl_enable_OES_vertex_array_object", "webgl_enable_WEBGL_draw_buffers", "webgl_enable_WEBGL_multi_draw", "webgl_enable_EXT_polygon_offset_clamp", "webgl_enable_EXT_clip_control", "webgl_enable_WEBGL_polygon_mode", "GL", "emscriptenWebGLGet", "computeUnpackAlignedImageSize", "colorChannelsInGlTextureFormat", "emscriptenWebGLGetTexPixelData", "emscriptenWebGLGetUniform", "webglGetProgramUniformLocation", "webglGetUniformLocation", "webglPrepareUniformLocationsBeforeFirstUse", "webglGetLeftBracePos", "emscriptenWebGLGetVertexAttrib", "__glGetActiveAttribOrUniform", "AL", "GLUT", "EGL", "GLEW", "IDBStore", "SDL", "SDL_gfx", "print", "printErr", "jstoi_s", "webSockets", "WS", "IDBFS" ];
 
 unexportedSymbols.forEach(unexportedRuntimeSymbol);
 
@@ -10127,8 +10153,14 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  915570: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
-  915647: () => {
+  924354: () => {
+    const token = globalThis.clawDiscordActivity?.sessionToken || "";
+    const ptr = _malloc(lengthBytesUTF8(token) + 1);
+    stringToUTF8(token, ptr, lengthBytesUTF8(token) + 1);
+    return ptr;
+  },
+  924539: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
+  924616: () => {
     const token = Module.clawComparison && Module.clawComparison.token;
     if (typeof token !== "string") return 0;
     const size = lengthBytesUTF8(token) + 1;
@@ -10136,27 +10168,26 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  915884: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
-  915948: () => {
+  924853: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  916070: () => {
+  924975: () => {
     Module.clawHideCursor = function() {
       _clawHideCursor();
     };
   },
-  916133: () => {
+  925038: () => {
     Module.clawRedrawScreen = function() {
       _clawRedrawScreen();
     };
   },
-  916200: () => {
+  925105: () => {
     Module.clawResizeScreen = function() {
       _clawResizeScreen();
     };
     Module.clawResizeScreen();
   },
-  916294: () => {
+  925199: () => {
     Module.clawUpdateBackgroundAudio = function() {
       _clawUpdateBackgroundAudio();
     };
@@ -10172,36 +10203,36 @@ var ASM_CONSTS = {
       Module.clawUpdateBackgroundAudio();
     });
   },
-  916834: $0 => {
+  925739: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  916900: () => {
+  925805: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  916963: ($0, $1) => {
+  925868: ($0, $1) => {
     Module.clawFail("Unable to continue game. (" + $0 + ")", {
       error_code: $0,
       error_resource_id: $1,
       error_source: "game_runtime"
     });
   },
-  917098: () => {
+  926003: () => {
     Module.clawFail(Module.clawStartupError || "Game loop stopped.");
   },
-  917168: $0 => {
+  926073: $0 => {
     Module.clawFail(UTF8ToString($0));
   },
-  917207: () => {
+  926112: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  917268: () => {
+  926173: () => {
     Module.clawTextShader = null;
   },
-  917302: () => {
+  926207: () => {
     Module.clawTextUniforms = {};
   },
-  917336: ($0, $1, $2, $3) => {
+  926241: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -10211,71 +10242,82 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  917489: ($0, $1, $2, $3, $4) => {
+  926394: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  917554: ($0, $1) => {
+  926459: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  917608: ($0, $1, $2) => {
+  926513: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  917667: ($0, $1) => {
+  926572: ($0, $1) => {
     Module.clawRequestLevel($0, UTF8ToString($1));
   },
-  917718: $0 => Module.clawLevels[$0].status,
-  917759: $0 => Module.clawLevels[$0].progress,
-  917802: $0 => Module.clawLevels[$0].status,
-  917843: $0 => {
+  926623: $0 => Module.clawLevels[$0].status,
+  926664: $0 => Module.clawLevels[$0].progress,
+  926707: $0 => Module.clawLevels[$0].status,
+  926748: $0 => {
     delete Module.clawLevels[$0];
   },
-  917877: ($0, $1) => {
+  926782: ($0, $1) => {
+    Module.clawOnlineMapHash = "";
+    Module.clawSHA256(HEAPU8.slice($0, $0 + $1)).then(hash => {
+      Module.clawOnlineMapHash = hash;
+    }).catch(() => {
+      Module.clawOnlineMapHash = "error";
+    });
+  },
+  926961: ($0, $1) => {
     globalThis.clawAnalytics?.end($0, $1);
   },
-  917920: ($0, $1, $2, $3, $4, $5) => {
+  927004: ($0, $1, $2, $3, $4, $5) => {
     globalThis.clawAnalytics?.levelStart($0, $1, $2, $3, $4, $5);
   },
-  917986: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  927070: $0 => {
+    stringToUTF8(Module.clawOnlineMapHash || "", $0, 65);
+  },
+  927124: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.complete($0, $1, $2, $3, $4, $5, $6, $7);
   },
-  918058: ($0, $1, $2, $3, $4) => {
+  927196: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.checkpoint($0, $1, $2, $3, $4);
   },
-  918120: ($0, $1, $2, $3) => {
+  927258: ($0, $1, $2, $3) => {
     globalThis.clawAnalytics?.stateChange?.(UTF8ToString($0), $1, $2, $3);
   },
-  918195: ($0, $1, $2, $3, $4) => {
+  927333: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.cheat?.(UTF8ToString($0), $1, $2, $3, $4);
   },
-  918268: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  927406: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.treasure?.($0, $1, $2, $3, $4, $5, $6, $7 ? UTF8ToString($7) : null);
   },
-  918368: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  927506: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.enemy?.(UTF8ToString($0), $1, $2, $3, $4, $5, UTF8ToString($6), $7 ? UTF8ToString($7) : null);
   },
-  918493: ($0, $1) => {
+  927631: ($0, $1) => {
     globalThis.clawAnalytics?.progress?.($0, $1);
   },
-  918543: ($0, $1, $2) => {
+  927681: ($0, $1, $2) => {
     globalThis.clawAnalytics?.position?.($0, $1, $2);
   },
-  918597: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  927735: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.death($0, $1, $2, $3, $4, $5, UTF8ToString($6), $7 ? UTF8ToString($7) : null);
   },
-  918706: ($0, $1, $2, $3, $4) => {
+  927844: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.route?.($0, $1, $2, $3, $4);
   },
-  918761: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
-  918861: ($0, $1, $2, $3, $4, $5) => {
+  927899: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
+  927999: ($0, $1, $2, $3, $4, $5) => {
     if (!Module.clawMapPointer) return;
     const point = Module.clawMapPointer($1, $2, $3, $4, $5);
     HEAPF32[$0 >> 2] = point.x;
     HEAPF32[($0 >> 2) + 1] = point.y;
   },
-  919020: () => {
+  928158: () => {
     Module.clawPaletteShader = null;
   },
-  919055: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  928193: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     try {
       Module.clawRenderPalette($0, $1, $2, $3, $4, $5, $6, $7);
       return 1;
@@ -10285,76 +10327,77 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  919226: ($0, $1, $2) => {
+  928364: ($0, $1, $2) => {
     globalThis.clawAnalytics?.menu(UTF8ToString($0), UTF8ToString($1), $2);
   },
-  919302: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  919365: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  919428: $0 => {
+  928440: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  928503: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
+  928567: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  928630: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  919476: () => !!(globalThis.CLAW_ANALYTICS_CONFIG?.leaderboard_api && globalThis.CLAW_ANALYTICS_CONFIG?.token),
-  919585: () => !!globalThis.clawDiscordActivity,
-  919630: () => !!globalThis.clawDiscordActivity?.embedded,
-  919685: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
-  919752: $0 => {
+  928678: () => !!(globalThis.CLAW_ANALYTICS_CONFIG?.leaderboard_api && globalThis.CLAW_ANALYTICS_CONFIG?.token),
+  928787: () => !!globalThis.clawDiscordActivity,
+  928832: () => !!globalThis.clawDiscordActivity?.embedded,
+  928887: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
+  928954: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  919802: $0 => {
+  929004: $0 => {
     if (Module.clawSetMenuTextInput) Module.clawSetMenuTextInput(!!$0); else Module.clawMenuTextInput = !!$0;
   },
-  919912: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status ?? -1,
-  919979: () => {
+  929114: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status ?? -1,
+  929181: () => {
     if (Module.clawFocusMenuTextInput) Module.clawFocusMenuTextInput();
   },
-  920051: () => {
+  929253: () => {
     globalThis.clawAnalytics?.showLeaderboards?.();
   },
-  920103: () => {
+  929305: () => {
     globalThis.clawAnalytics?.applicationQuit?.();
   },
-  920154: () => {
+  929356: () => {
     Module.clawQuit();
   },
-  920177: () => Module.clawTouchMode ? 1 : 0,
-  920218: $0 => {
+  929379: () => Module.clawTouchMode ? 1 : 0,
+  929420: $0 => {
     if (Module.clawCopyMenuText) Module.clawCopyMenuText(UTF8ToString($0));
   },
-  920294: () => {
+  929496: () => {
     if (Module.clawPasteMenuText) Module.clawPasteMenuText();
   },
-  920356: () => {
+  929558: () => {
     Module.clawImportSave();
   },
-  920385: () => {
+  929587: () => {
     Module.clawExportSave();
   },
-  920414: () => Module.clawTouchSettings.enabled(),
-  920461: () => Module.clawTouchSettings.style(),
-  920506: () => Module.clawTouchSettings.size(),
-  920550: () => {
+  929616: () => Module.clawTouchSettings.enabled(),
+  929663: () => Module.clawTouchSettings.style(),
+  929708: () => Module.clawTouchSettings.size(),
+  929752: () => {
     Module.clawTouchSettings.toggle();
   },
-  920589: () => {
+  929791: () => {
     Module.clawTouchSettings.cycleStyle();
   },
-  920632: () => {
+  929834: () => {
     Module.clawTouchSettings.cycleSize();
   },
-  920674: $0 => Module.clawTouchSettings.action($0),
-  920722: $0 => {
+  929876: $0 => Module.clawTouchSettings.action($0),
+  929924: $0 => {
     Module.clawTouchSettings.toggleAction($0);
   },
-  920769: () => {
+  929971: () => {
     Module.clawTouchSettings.reorganize();
   },
-  920812: () => {
+  930014: () => {
     Module.clawTouchSettings.finishReorganizing();
   },
-  920863: () => {
+  930065: () => {
     Module.clawTouchSettings.resetPositions();
   },
-  920910: ($0, $1, $2) => {
+  930112: ($0, $1, $2) => {
     const id = $0;
     const persist = !!$2;
     const input = document.createElement("input");
@@ -10400,18 +10443,18 @@ var ASM_CONSTS = {
     });
     input.click();
   },
-  922349: () => {
+  931551: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  922471: () => globalThis.clawAnalytics?.enabled() ? 1 : 0,
-  922527: () => globalThis.clawAnalytics?.canEnable() ? 1 : 0,
-  922585: () => {
+  931673: () => globalThis.clawAnalytics?.enabled() ? 1 : 0,
+  931729: () => globalThis.clawAnalytics?.canEnable() ? 1 : 0,
+  931787: () => {
     const analytics = globalThis.clawAnalytics;
     analytics?.setEnabled(!analytics.enabled());
   },
-  922678: ($0, $1) => {
+  931880: ($0, $1) => {
     try {
       const bytes = FS.readFile(UTF8ToString($0));
       const url = URL.createObjectURL(new Blob([ bytes ], {
@@ -10430,16 +10473,21 @@ var ASM_CONSTS = {
       console.error(error);
     }
   },
-  923116: () => {
+  932318: () => {
     globalThis.clawAnalytics?.quitLevel();
   },
-  923159: () => Module.clawTouchMode ? 1 : 0,
-  923200: () => {
+  932361: () => Module.clawTouchMode ? 1 : 0,
+  932402: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
+  932466: () => {
+    globalThis.clawDiscordActivity.takeQuickPlayLevel();
+  },
+  932523: () => globalThis.clawDiscordActivity?.takeQuickPlayLevel?.() || 0,
+  932595: () => {
     if (Module.clawUpdateBackgroundAudio) Module.clawUpdateBackgroundAudio();
   },
-  923278: () => Module.clawTouchActions || 0,
-  923319: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
-  923387: () => {
+  932673: () => Module.clawTouchActions || 0,
+  932714: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
+  932782: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -10455,7 +10503,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  923701: $0 => {
+  933096: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -10463,13 +10511,13 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  923916: () => {
+  933311: () => {
     Module["SDL3"].dummy_audio = {};
     Module["SDL3"].dummy_audio.timers = [];
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  924093: ($0, $1, $2, $3, $4) => {
+  933488: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -10478,14 +10526,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  924285: $0 => {
+  933680: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  924416: () => {
+  933811: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -10493,13 +10541,13 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  924563: () => {
+  933958: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     }
     return false;
   },
-  924717: () => {
+  934112: () => {
     var SDL3 = Module["SDL3"];
     if (typeof (SDL3.audio_playback) === "undefined") {
       SDL3.audio_playback = {};
@@ -10521,8 +10569,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  925296: () => Module["SDL3"].audioContext.sampleRate,
-  925347: ($0, $1, $2, $3) => {
+  934691: () => Module["SDL3"].audioContext.sampleRate,
+  934742: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10559,11 +10607,12 @@ var ASM_CONSTS = {
       }).then(have_microphone).catch(no_microphone);
     }
   },
-  927038: ($0, $1, $2, $3) => {
+  936433: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
+    var clawPlaybackGeneration = SDL3.audio_playback;
     SDL3.audio_playback.scriptProcessorNode = SDL3.audioContext["createScriptProcessor"]($1, 0, $0);
     SDL3.audio_playback.scriptProcessorNode["onaudioprocess"] = function(e) {
-      if ((SDL3 === undefined) || (SDL3.audio_playback === undefined)) {
+      if (SDL3.audio_playback !== clawPlaybackGeneration) {
         return;
       }
       if (SDL3.audio_playback.silenceTimer !== undefined) {
@@ -10579,6 +10628,9 @@ var ASM_CONSTS = {
       SDL3.audio_playback.silenceBuffer = SDL3.audioContext.createBuffer($0, $1, SDL3.audioContext.sampleRate);
       SDL3.audio_playback.silenceBuffer.getChannelData(0).fill(0);
       var silence_callback = function() {
+        if (SDL3.audio_playback !== clawPlaybackGeneration) {
+          return;
+        }
         if ((typeof navigator.userActivation) !== "undefined") {
           if (navigator.userActivation.hasBeenActive) {
             SDL3.audioContext.resume();
@@ -10591,7 +10643,7 @@ var ASM_CONSTS = {
       SDL3.audio_playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  928354: $0 => {
+  937850: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10613,6 +10665,7 @@ var ASM_CONSTS = {
       SDL3.audio_recording = undefined;
     } else {
       if (SDL3.audio_playback.scriptProcessorNode != undefined) {
+        SDL3.audio_playback.scriptProcessorNode.onaudioprocess = null;
         SDL3.audio_playback.scriptProcessorNode.disconnect();
       }
       if (SDL3.audio_playback.silenceTimer !== undefined) {
@@ -10625,7 +10678,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  929510: ($0, $1) => {
+  939069: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var buf = SDL3.CPtrToHeap32Index($0);
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -10639,7 +10692,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  930043: ($0, $1) => {
+  939602: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -10658,11 +10711,11 @@ var ASM_CONSTS = {
       }
     }
   },
-  930670: () => {
+  940229: () => {
     Module["SDL3"].camera = {};
   },
-  930702: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  930761: ($0, $1, $2, $3, $4) => {
+  940261: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  940320: ($0, $1, $2, $3, $4) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -10736,7 +10789,7 @@ var ASM_CONSTS = {
       outcome(device, 0, 0, 0, 0);
     });
   },
-  933067: () => {
+  942626: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -10744,7 +10797,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  933318: ($0, $1, $2) => {
+  942877: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -10757,19 +10810,19 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  933696: () => {
+  943255: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  933783: $0 => {
+  943342: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"] || !gamepad["vibrationActuator"]["effects"] || !gamepad["vibrationActuator"]["effects"]["includes"]("trigger-rumble")) {
       return false;
     }
     return true;
   },
-  934029: $0 => {
+  943588: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10785,7 +10838,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  934494: $0 => {
+  944053: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10801,14 +10854,14 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  934966: $0 => {
+  944525: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
     }
     return gamepad["id"]["toLowerCase"]()["indexOf"]("xinput") >= 0;
   },
-  935109: () => {
+  944668: () => {
     const os = ([ "Android", "Linux", "iPhone", "Macintosh", "Windows" ]);
     const ua = navigator["userAgent"];
     for (let i = 0; i < os.length; i++) {
@@ -10818,7 +10871,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  935319: ($0, $1, $2) => {
+  944878: ($0, $1, $2) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       stringToUTF8("\0", $1, $2);
@@ -10840,14 +10893,14 @@ var ASM_CONSTS = {
     }
     stringToUTF8(output.trim(), $1, $2);
   },
-  935997: $0 => {
+  945556: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"]) {
       return false;
     }
     return true;
   },
-  936125: ($0, $1, $2, $3, $4) => {
+  945684: ($0, $1, $2, $3, $4) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return false;
@@ -10862,7 +10915,7 @@ var ASM_CONSTS = {
     });
     return true;
   },
-  936438: ($0, $1) => {
+  945997: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -10896,7 +10949,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  937146: ($0, $1, $2, $3) => {
+  946705: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -10927,7 +10980,7 @@ var ASM_CONSTS = {
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
     return true;
   },
-  937895: () => {
+  947454: () => {
     var SDL3 = Module["SDL3"];
     SDL3["mouse_x"] = 0;
     SDL3["mouse_y"] = 0;
@@ -10953,7 +11006,7 @@ var ASM_CONSTS = {
       }
     });
   },
-  938583: ($0, $1, $2, $3, $4) => {
+  948142: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -10974,20 +11027,20 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  939241: $0 => {
+  948800: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  939324: () => {
+  948883: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  939393: () => Module["SDL3"]["mouse_x"],
-  939431: () => Module["SDL3"]["mouse_y"],
-  939469: $0 => Module["SDL3"]["mouse_buttons"][$0],
-  939517: $0 => {
+  948952: () => Module["SDL3"]["mouse_x"],
+  948990: () => Module["SDL3"]["mouse_y"],
+  949028: $0 => Module["SDL3"]["mouse_buttons"][$0],
+  949076: $0 => {
     var data = $0;
     if (document.sdlEventHandlerLockKeysCheck) {
       document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
@@ -10999,10 +11052,10 @@ var ASM_CONSTS = {
     };
     document.addEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  940071: () => {
+  949630: () => {
     document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  940155: $0 => {
+  949714: $0 => {
     var target = document;
     if (target) {
       target.sdlEventHandlerMouseButtonUpGlobal = function(event) {
@@ -11016,7 +11069,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
     }
   },
-  940516: $0 => {
+  950075: $0 => {
     var SDL3 = Module["SDL3"];
     if (SDL3.makePointerEventCStruct === undefined) {
       SDL3.makePointerEventCStruct = function(left, top, event) {
@@ -11054,7 +11107,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  941508: $0 => {
+  951067: $0 => {
     var id = UTF8ToString($0);
     try {
       var canvas = document.querySelector(id);
@@ -11064,23 +11117,23 @@ var ASM_CONSTS = {
     } catch (e) {}
     return false;
   },
-  941674: () => document.hasFocus(),
-  941706: () => {
+  951233: () => document.hasFocus(),
+  951265: () => {
     var target = document;
     if (target) {
       target.removeEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
       target.sdlEventHandlerMouseButtonUpGlobal = undefined;
     }
   },
-  941888: () => document.body.clientWidth,
-  941926: () => document.body.clientHeight,
-  941965: () => window.innerWidth,
-  941995: () => window.innerHeight,
-  942026: () => window.outerWidth,
-  942056: () => window.outerHeight,
-  942087: () => window.pageXOffset,
-  942118: () => window.pageYOffset,
-  942149: ($0, $1) => {
+  951447: () => document.body.clientWidth,
+  951485: () => document.body.clientHeight,
+  951524: () => window.innerWidth,
+  951554: () => window.innerHeight,
+  951585: () => window.outerWidth,
+  951615: () => window.outerHeight,
+  951646: () => window.pageXOffset,
+  951677: () => window.pageYOffset,
+  951708: ($0, $1) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -11118,7 +11171,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerPointerGeneric);
     }
   },
-  943537: ($0, $1, $2) => {
+  953096: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -11198,7 +11251,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  945904: $0 => {
+  955463: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -11214,7 +11267,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  946734: $0 => {
+  956293: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       target.removeEventListener("pointerenter", target.sdlEventHandlerPointerEnter);
@@ -11229,7 +11282,7 @@ var ASM_CONSTS = {
       target.sdlEventHandlerPointerGeneric = undefined;
     }
   },
-  947468: () => {
+  957027: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -11241,7 +11294,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  947677: () => {
+  957236: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -11249,14 +11302,14 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  947930: () => window.innerWidth,
-  947960: () => window.innerHeight,
-  947991: $0 => {
+  957489: () => window.innerWidth,
+  957519: () => window.innerHeight,
+  957550: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  948100: ($0, $1) => {
+  957659: ($0, $1) => {
     var pngData = HEAPU8.buffer instanceof ArrayBuffer ? HEAPU8.subarray($0, $0 + $1) : HEAPU8.slice($0, $0 + $1);
     var blob = new Blob([ pngData ], {
       type: "image/png"
@@ -11274,12 +11327,12 @@ var ASM_CONSTS = {
     }
     link.href = url;
   },
-  948593: () => {
+  958152: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  948667: () => window.innerWidth,
-  948697: () => window.innerHeight,
-  948728: $0 => {
+  958226: () => window.innerWidth,
+  958256: () => window.innerHeight,
+  958287: $0 => {
     var canvas = document.querySelector(UTF8ToString($0));
     canvas.SDL3_original_position = canvas.style.position;
     canvas.SDL3_original_top = canvas.style.top;
@@ -11300,7 +11353,7 @@ var ASM_CONSTS = {
     canvas.style.top = "0";
     canvas.style.left = "0";
   },
-  949426: () => {
+  958985: () => {
     var div = document.getElementById("SDL3_fill_document_background_elements");
     if (div) {
       if (div.SDL3_canvas_nextsib) {
@@ -11317,7 +11370,7 @@ var ASM_CONSTS = {
       div.remove();
     }
   },
-  949985: () => {
+  959544: () => {
     if (window.matchMedia) {
       var SDL3 = Module["SDL3"];
       SDL3.eventHandlerThemeChanged = function(event) {
@@ -11327,7 +11380,7 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  950307: ($0, $1, $2, $3, $4) => {
+  959866: ($0, $1, $2, $3, $4) => {
     var title = UTF8ToString($0);
     var message = UTF8ToString($1);
     var background = UTF8ToString($2);
@@ -11347,7 +11400,7 @@ var ASM_CONSTS = {
     dialog.append(p);
     dialog.showModal();
   },
-  950848: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  960407: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     var dialog_id = UTF8ToString($0);
     var text = UTF8ToString($1);
     var responseId = $2;
@@ -11388,7 +11441,7 @@ var ASM_CONSTS = {
     dialog.append(button);
     return true;
   },
-  951857: $0 => {
+  961416: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -11396,7 +11449,7 @@ var ASM_CONSTS = {
     }
     return dialog.open;
   },
-  951995: $0 => {
+  961554: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -11408,17 +11461,17 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  952177: ($0, $1) => {
+  961736: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  952234: $0 => {
+  961793: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  952274: () => {
+  961833: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  952391: $0 => {
+  961950: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
@@ -11976,6 +12029,7 @@ var wasmImports = {
   /** @export */ emscripten_websocket_is_supported: _emscripten_websocket_is_supported,
   /** @export */ emscripten_websocket_new: _emscripten_websocket_new,
   /** @export */ emscripten_websocket_send_binary: _emscripten_websocket_send_binary,
+  /** @export */ emscripten_websocket_send_utf8_text: _emscripten_websocket_send_utf8_text,
   /** @export */ emscripten_websocket_set_onclose_callback_on_thread: _emscripten_websocket_set_onclose_callback_on_thread,
   /** @export */ emscripten_websocket_set_onerror_callback_on_thread: _emscripten_websocket_set_onerror_callback_on_thread,
   /** @export */ emscripten_websocket_set_onmessage_callback_on_thread: _emscripten_websocket_set_onmessage_callback_on_thread,
@@ -12086,21 +12140,10 @@ function invoke_viii(index, a1, a2, a3) {
   }
 }
 
-function invoke_ii(index, a1) {
+function invoke_vi(index, a1) {
   var sp = stackSave();
   try {
-    return getWasmTableEntry(index)(a1);
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_iiii(index, a1, a2, a3) {
-  var sp = stackSave();
-  try {
-    return getWasmTableEntry(index)(a1, a2, a3);
+    getWasmTableEntry(index)(a1);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -12119,43 +12162,10 @@ function invoke_vii(index, a1, a2) {
   }
 }
 
-function invoke_v(index) {
+function invoke_ii(index, a1) {
   var sp = stackSave();
   try {
-    getWasmTableEntry(index)();
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_viiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8) {
-  var sp = stackSave();
-  try {
-    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8);
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_vij(index, a1, a2) {
-  var sp = stackSave();
-  try {
-    getWasmTableEntry(index)(a1, a2);
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_vi(index, a1) {
-  var sp = stackSave();
-  try {
-    getWasmTableEntry(index)(a1);
+    return getWasmTableEntry(index)(a1);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -12174,10 +12184,65 @@ function invoke_viiii(index, a1, a2, a3, a4) {
   }
 }
 
+function invoke_viiiiii(index, a1, a2, a3, a4, a5, a6) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_v(index) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)();
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viiiiiii(index, a1, a2, a3, a4, a5, a6, a7) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_iiii(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_iiiii(index, a1, a2, a3, a4) {
   var sp = stackSave();
   try {
     return getWasmTableEntry(index)(a1, a2, a3, a4);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viiiiiiii(index, a1, a2, a3, a4, a5, a6, a7, a8) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -12196,10 +12261,10 @@ function invoke_i(index) {
   }
 }
 
-function invoke_viiiiii(index, a1, a2, a3, a4, a5, a6) {
+function invoke_vij(index, a1, a2) {
   var sp = stackSave();
   try {
-    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+    getWasmTableEntry(index)(a1, a2);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -12302,17 +12367,6 @@ function invoke_viiifffii(index, a1, a2, a3, a4, a5, a6, a7, a8) {
   var sp = stackSave();
   try {
     getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8);
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_viiiiiii(index, a1, a2, a3, a4, a5, a6, a7) {
-  var sp = stackSave();
-  try {
-    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
