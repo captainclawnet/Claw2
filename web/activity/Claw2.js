@@ -9693,6 +9693,11 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
       generation: 0,
       quickPlayLevel: 0,
       embedded: new URLSearchParams(locationSearch).has("frame_id"),
+      takeQuickPlayLevel() {
+        const level = this.quickPlayLevel;
+        this.quickPlayLevel = 0;
+        return level;
+      },
       async connect() {
         if ([ 1, 2, 3 ].includes(this.status)) return;
         const generation = ++this.generation;
@@ -9701,10 +9706,12 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
         this.error = "";
         try {
           if (!new URLSearchParams(locationSearch).has("frame_id")) throw new Error("Open this build as a Discord Activity.");
-          sdk ?? (sdk = new SDK(config2.clientId, {
-            disableConsoleLogOverride: true
-          }));
-          this.quickPlayLevel = quickPlayLevel(sdk.customId);
+          if (!sdk) {
+            sdk = new SDK(config2.clientId, {
+              disableConsoleLogOverride: true
+            });
+            this.quickPlayLevel = quickPlayLevel(sdk.customId);
+          }
           await sdk.ready();
           if (!isCurrent()) return;
           const {code} = await sdk.commands.authorize({
@@ -10593,10 +10600,6 @@ Module.clawComparisonDownload = function() {
       } catch (_) {}
       // PLAY/comparison startup uses EN even when no saved language exists.
       if (Module.clawComparisonArguments?.().length) language = "EN";
-      if (globalThis.clawDiscordActivity?.quickPlayLevel) {
-        language = language || "EN";
-        audioLanguage = audioLanguage || language;
-      }
       if (packs.has(language) && language !== "BaseAssets") {
         await load(language, 0, showProgress);
         await loadStrings(language, showProgress);
@@ -19626,27 +19629,26 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  912797: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
-  912861: () => {
+  912797: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  912983: () => {
+  912919: () => {
     Module.clawHideCursor = function() {
       _clawHideCursor();
     };
   },
-  913046: () => {
+  912982: () => {
     Module.clawRedrawScreen = function() {
       _clawRedrawScreen();
     };
   },
-  913113: () => {
+  913049: () => {
     Module.clawResizeScreen = function() {
       _clawResizeScreen();
     };
     Module.clawResizeScreen();
   },
-  913207: () => {
+  913143: () => {
     Module.clawUpdateBackgroundAudio = function() {
       _clawUpdateBackgroundAudio();
     };
@@ -19662,36 +19664,36 @@ var ASM_CONSTS = {
       Module.clawUpdateBackgroundAudio();
     });
   },
-  913747: $0 => {
+  913683: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  913813: () => {
+  913749: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  913876: ($0, $1) => {
+  913812: ($0, $1) => {
     Module.clawFail("Unable to continue game. (" + $0 + ")", {
       error_code: $0,
       error_resource_id: $1,
       error_source: "game_runtime"
     });
   },
-  914011: () => {
+  913947: () => {
     Module.clawFail(Module.clawStartupError || "Game loop stopped.");
   },
-  914081: $0 => {
+  914017: $0 => {
     Module.clawFail(UTF8ToString($0));
   },
-  914120: () => {
+  914056: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  914181: () => {
+  914117: () => {
     Module.clawTextShader = null;
   },
-  914215: () => {
+  914151: () => {
     Module.clawTextUniforms = {};
   },
-  914249: ($0, $1, $2, $3) => {
+  914185: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -19701,71 +19703,71 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  914402: ($0, $1, $2, $3, $4) => {
+  914338: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  914467: ($0, $1) => {
+  914403: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  914521: ($0, $1, $2) => {
+  914457: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  914580: ($0, $1) => {
+  914516: ($0, $1) => {
     Module.clawRequestLevel($0, UTF8ToString($1));
   },
-  914631: $0 => Module.clawLevels[$0].status,
-  914672: $0 => Module.clawLevels[$0].progress,
-  914715: $0 => Module.clawLevels[$0].status,
-  914756: $0 => {
+  914567: $0 => Module.clawLevels[$0].status,
+  914608: $0 => Module.clawLevels[$0].progress,
+  914651: $0 => Module.clawLevels[$0].status,
+  914692: $0 => {
     delete Module.clawLevels[$0];
   },
-  914790: ($0, $1) => {
+  914726: ($0, $1) => {
     globalThis.clawAnalytics?.end($0, $1);
   },
-  914833: ($0, $1, $2, $3, $4, $5) => {
+  914769: ($0, $1, $2, $3, $4, $5) => {
     globalThis.clawAnalytics?.levelStart($0, $1, $2, $3, $4, $5);
   },
-  914899: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  914835: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.complete($0, $1, $2, $3, $4, $5, $6, $7);
   },
-  914971: ($0, $1, $2, $3, $4) => {
+  914907: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.checkpoint($0, $1, $2, $3, $4);
   },
-  915033: ($0, $1, $2, $3) => {
+  914969: ($0, $1, $2, $3) => {
     globalThis.clawAnalytics?.stateChange?.(UTF8ToString($0), $1, $2, $3);
   },
-  915108: ($0, $1, $2, $3, $4) => {
+  915044: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.cheat?.(UTF8ToString($0), $1, $2, $3, $4);
   },
-  915181: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  915117: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.treasure?.($0, $1, $2, $3, $4, $5, $6, $7 ? UTF8ToString($7) : null);
   },
-  915281: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  915217: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.enemy?.(UTF8ToString($0), $1, $2, $3, $4, $5, UTF8ToString($6), $7 ? UTF8ToString($7) : null);
   },
-  915406: ($0, $1) => {
+  915342: ($0, $1) => {
     globalThis.clawAnalytics?.progress?.($0, $1);
   },
-  915456: ($0, $1, $2) => {
+  915392: ($0, $1, $2) => {
     globalThis.clawAnalytics?.position?.($0, $1, $2);
   },
-  915510: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  915446: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.death($0, $1, $2, $3, $4, $5, UTF8ToString($6), $7 ? UTF8ToString($7) : null);
   },
-  915619: ($0, $1, $2, $3, $4) => {
+  915555: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.route?.($0, $1, $2, $3, $4);
   },
-  915674: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
-  915774: ($0, $1, $2, $3, $4, $5) => {
+  915610: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
+  915710: ($0, $1, $2, $3, $4, $5) => {
     if (!Module.clawMapPointer) return;
     const point = Module.clawMapPointer($1, $2, $3, $4, $5);
     HEAPF32[$0 >> 2] = point.x;
     HEAPF32[($0 >> 2) + 1] = point.y;
   },
-  915933: () => {
+  915869: () => {
     Module.clawPaletteShader = null;
   },
-  915968: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  915904: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     try {
       Module.clawRenderPalette($0, $1, $2, $3, $4, $5, $6, $7);
       return 1;
@@ -19775,10 +19777,11 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  916139: ($0, $1, $2) => {
+  916075: ($0, $1, $2) => {
     globalThis.clawAnalytics?.menu(UTF8ToString($0), UTF8ToString($1), $2);
   },
-  916215: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  916151: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  916214: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
   916278: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
   916341: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
@@ -19924,12 +19927,17 @@ var ASM_CONSTS = {
     globalThis.clawAnalytics?.quitLevel();
   },
   920072: () => Module.clawTouchMode ? 1 : 0,
-  920113: () => {
+  920113: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
+  920177: () => {
+    globalThis.clawDiscordActivity.takeQuickPlayLevel();
+  },
+  920234: () => globalThis.clawDiscordActivity?.takeQuickPlayLevel?.() || 0,
+  920306: () => {
     if (Module.clawUpdateBackgroundAudio) Module.clawUpdateBackgroundAudio();
   },
-  920191: () => Module.clawTouchActions || 0,
-  920232: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
-  920300: () => {
+  920384: () => Module.clawTouchActions || 0,
+  920425: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
+  920493: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -19945,7 +19953,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  920614: $0 => {
+  920807: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -19953,13 +19961,13 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  920829: () => {
+  921022: () => {
     Module["SDL3"].dummy_audio = {};
     Module["SDL3"].dummy_audio.timers = [];
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  921006: ($0, $1, $2, $3, $4) => {
+  921199: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -19968,14 +19976,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  921198: $0 => {
+  921391: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  921329: () => {
+  921522: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -19983,13 +19991,13 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  921476: () => {
+  921669: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     }
     return false;
   },
-  921630: () => {
+  921823: () => {
     var SDL3 = Module["SDL3"];
     if (typeof (SDL3.audio_playback) === "undefined") {
       SDL3.audio_playback = {};
@@ -20011,8 +20019,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  922209: () => Module["SDL3"].audioContext.sampleRate,
-  922260: ($0, $1, $2, $3) => {
+  922402: () => Module["SDL3"].audioContext.sampleRate,
+  922453: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -20049,7 +20057,7 @@ var ASM_CONSTS = {
       }).then(have_microphone).catch(no_microphone);
     }
   },
-  923951: ($0, $1, $2, $3) => {
+  924144: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     SDL3.audio_playback.scriptProcessorNode = SDL3.audioContext["createScriptProcessor"]($1, 0, $0);
     SDL3.audio_playback.scriptProcessorNode["onaudioprocess"] = function(e) {
@@ -20081,7 +20089,7 @@ var ASM_CONSTS = {
       SDL3.audio_playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  925267: $0 => {
+  925460: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -20115,7 +20123,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  926423: ($0, $1) => {
+  926616: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var buf = SDL3.CPtrToHeap32Index($0);
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -20129,7 +20137,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  926956: ($0, $1) => {
+  927149: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -20148,11 +20156,11 @@ var ASM_CONSTS = {
       }
     }
   },
-  927583: () => {
+  927776: () => {
     Module["SDL3"].camera = {};
   },
-  927615: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  927674: ($0, $1, $2, $3, $4) => {
+  927808: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  927867: ($0, $1, $2, $3, $4) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -20226,7 +20234,7 @@ var ASM_CONSTS = {
       outcome(device, 0, 0, 0, 0);
     });
   },
-  929980: () => {
+  930173: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -20234,7 +20242,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  930231: ($0, $1, $2) => {
+  930424: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -20247,19 +20255,19 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  930609: () => {
+  930802: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  930696: $0 => {
+  930889: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"] || !gamepad["vibrationActuator"]["effects"] || !gamepad["vibrationActuator"]["effects"]["includes"]("trigger-rumble")) {
       return false;
     }
     return true;
   },
-  930942: $0 => {
+  931135: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -20275,7 +20283,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  931407: $0 => {
+  931600: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -20291,14 +20299,14 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  931879: $0 => {
+  932072: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
     }
     return gamepad["id"]["toLowerCase"]()["indexOf"]("xinput") >= 0;
   },
-  932022: () => {
+  932215: () => {
     const os = ([ "Android", "Linux", "iPhone", "Macintosh", "Windows" ]);
     const ua = navigator["userAgent"];
     for (let i = 0; i < os.length; i++) {
@@ -20308,7 +20316,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  932232: ($0, $1, $2) => {
+  932425: ($0, $1, $2) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       stringToUTF8("\0", $1, $2);
@@ -20330,14 +20338,14 @@ var ASM_CONSTS = {
     }
     stringToUTF8(output.trim(), $1, $2);
   },
-  932910: $0 => {
+  933103: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"]) {
       return false;
     }
     return true;
   },
-  933038: ($0, $1, $2, $3, $4) => {
+  933231: ($0, $1, $2, $3, $4) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return false;
@@ -20352,7 +20360,7 @@ var ASM_CONSTS = {
     });
     return true;
   },
-  933351: ($0, $1) => {
+  933544: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -20386,7 +20394,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  934059: ($0, $1, $2, $3) => {
+  934252: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -20417,7 +20425,7 @@ var ASM_CONSTS = {
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
     return true;
   },
-  934808: () => {
+  935001: () => {
     var SDL3 = Module["SDL3"];
     SDL3["mouse_x"] = 0;
     SDL3["mouse_y"] = 0;
@@ -20443,7 +20451,7 @@ var ASM_CONSTS = {
       }
     });
   },
-  935496: ($0, $1, $2, $3, $4) => {
+  935689: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -20464,20 +20472,20 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  936154: $0 => {
+  936347: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  936237: () => {
+  936430: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  936306: () => Module["SDL3"]["mouse_x"],
-  936344: () => Module["SDL3"]["mouse_y"],
-  936382: $0 => Module["SDL3"]["mouse_buttons"][$0],
-  936430: $0 => {
+  936499: () => Module["SDL3"]["mouse_x"],
+  936537: () => Module["SDL3"]["mouse_y"],
+  936575: $0 => Module["SDL3"]["mouse_buttons"][$0],
+  936623: $0 => {
     var data = $0;
     if (document.sdlEventHandlerLockKeysCheck) {
       document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
@@ -20489,10 +20497,10 @@ var ASM_CONSTS = {
     };
     document.addEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  936984: () => {
+  937177: () => {
     document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  937068: $0 => {
+  937261: $0 => {
     var target = document;
     if (target) {
       target.sdlEventHandlerMouseButtonUpGlobal = function(event) {
@@ -20506,7 +20514,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
     }
   },
-  937429: $0 => {
+  937622: $0 => {
     var SDL3 = Module["SDL3"];
     if (SDL3.makePointerEventCStruct === undefined) {
       SDL3.makePointerEventCStruct = function(left, top, event) {
@@ -20544,7 +20552,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  938421: $0 => {
+  938614: $0 => {
     var id = UTF8ToString($0);
     try {
       var canvas = document.querySelector(id);
@@ -20554,23 +20562,23 @@ var ASM_CONSTS = {
     } catch (e) {}
     return false;
   },
-  938587: () => document.hasFocus(),
-  938619: () => {
+  938780: () => document.hasFocus(),
+  938812: () => {
     var target = document;
     if (target) {
       target.removeEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
       target.sdlEventHandlerMouseButtonUpGlobal = undefined;
     }
   },
-  938801: () => document.body.clientWidth,
-  938839: () => document.body.clientHeight,
-  938878: () => window.innerWidth,
-  938908: () => window.innerHeight,
-  938939: () => window.outerWidth,
-  938969: () => window.outerHeight,
-  939e3: () => window.pageXOffset,
-  939031: () => window.pageYOffset,
-  939062: ($0, $1) => {
+  938994: () => document.body.clientWidth,
+  939032: () => document.body.clientHeight,
+  939071: () => window.innerWidth,
+  939101: () => window.innerHeight,
+  939132: () => window.outerWidth,
+  939162: () => window.outerHeight,
+  939193: () => window.pageXOffset,
+  939224: () => window.pageYOffset,
+  939255: ($0, $1) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -20608,7 +20616,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerPointerGeneric);
     }
   },
-  940450: ($0, $1, $2) => {
+  940643: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -20688,7 +20696,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  942817: $0 => {
+  943010: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -20704,7 +20712,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  943647: $0 => {
+  943840: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       target.removeEventListener("pointerenter", target.sdlEventHandlerPointerEnter);
@@ -20719,7 +20727,7 @@ var ASM_CONSTS = {
       target.sdlEventHandlerPointerGeneric = undefined;
     }
   },
-  944381: () => {
+  944574: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -20731,7 +20739,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  944590: () => {
+  944783: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -20739,14 +20747,14 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  944843: () => window.innerWidth,
-  944873: () => window.innerHeight,
-  944904: $0 => {
+  945036: () => window.innerWidth,
+  945066: () => window.innerHeight,
+  945097: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  945013: ($0, $1) => {
+  945206: ($0, $1) => {
     var pngData = HEAPU8.buffer instanceof ArrayBuffer ? HEAPU8.subarray($0, $0 + $1) : HEAPU8.slice($0, $0 + $1);
     var blob = new Blob([ pngData ], {
       type: "image/png"
@@ -20764,12 +20772,12 @@ var ASM_CONSTS = {
     }
     link.href = url;
   },
-  945506: () => {
+  945699: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  945580: () => window.innerWidth,
-  945610: () => window.innerHeight,
-  945641: $0 => {
+  945773: () => window.innerWidth,
+  945803: () => window.innerHeight,
+  945834: $0 => {
     var canvas = document.querySelector(UTF8ToString($0));
     canvas.SDL3_original_position = canvas.style.position;
     canvas.SDL3_original_top = canvas.style.top;
@@ -20790,7 +20798,7 @@ var ASM_CONSTS = {
     canvas.style.top = "0";
     canvas.style.left = "0";
   },
-  946339: () => {
+  946532: () => {
     var div = document.getElementById("SDL3_fill_document_background_elements");
     if (div) {
       if (div.SDL3_canvas_nextsib) {
@@ -20807,7 +20815,7 @@ var ASM_CONSTS = {
       div.remove();
     }
   },
-  946898: () => {
+  947091: () => {
     if (window.matchMedia) {
       var SDL3 = Module["SDL3"];
       SDL3.eventHandlerThemeChanged = function(event) {
@@ -20817,7 +20825,7 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  947220: ($0, $1, $2, $3, $4) => {
+  947413: ($0, $1, $2, $3, $4) => {
     var title = UTF8ToString($0);
     var message = UTF8ToString($1);
     var background = UTF8ToString($2);
@@ -20837,7 +20845,7 @@ var ASM_CONSTS = {
     dialog.append(p);
     dialog.showModal();
   },
-  947761: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  947954: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     var dialog_id = UTF8ToString($0);
     var text = UTF8ToString($1);
     var responseId = $2;
@@ -20878,7 +20886,7 @@ var ASM_CONSTS = {
     dialog.append(button);
     return true;
   },
-  948770: $0 => {
+  948963: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -20886,7 +20894,7 @@ var ASM_CONSTS = {
     }
     return dialog.open;
   },
-  948908: $0 => {
+  949101: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -20898,17 +20906,17 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  949090: ($0, $1) => {
+  949283: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  949147: $0 => {
+  949340: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  949187: () => {
+  949380: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  949304: $0 => {
+  949497: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
