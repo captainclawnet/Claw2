@@ -87,6 +87,7 @@ globalThis.clawDiscordActivity = {
   error: "",
   generation: 0,
   sessionToken: null,
+  activeConnection: null,
   apiOrigin: globalThis.clawDiscordConfig.apiOrigin,
   async connect(interactive = true) {
     if (interactive && (this.pending || this.status === 3)) return;
@@ -102,65 +103,101 @@ globalThis.clawDiscordActivity = {
       this.pending = false;
       return;
     }
-    let tab;
-    let onMessage;
-    let closePoll;
+    const connection = {
+      tab: null,
+      onMessage: null,
+      closePoll: null,
+      reject: null,
+      abort: null
+    };
+    this.activeConnection = connection;
     const deadline = Date.now() + 3e5;
     try {
       const sessionToken = await new Promise((resolve, reject) => {
-        onMessage = event => {
-          if (event.origin !== this.apiOrigin || event.source !== tab || event.data?.type !== "claw-discord-auth" || typeof event.data.session !== "string") return;
-          clearInterval(closePoll);
+        connection.reject = reject;
+        connection.onMessage = event => {
+          if (event.origin !== this.apiOrigin || event.source !== connection.tab || event.data?.type !== "claw-discord-auth" || typeof event.data.session !== "string") return;
+          clearInterval(connection.closePoll);
           resolve(event.data.session);
         };
-        window.addEventListener("message", onMessage);
+        window.addEventListener("message", connection.onMessage);
         // Open synchronously, before awaiting network I/O, to preserve user activation.
-        tab = window.open(new URL("/auth/discord", this.apiOrigin).href, "_blank");
-        if (!tab) {
+        connection.tab = window.open(new URL("/auth/discord", this.apiOrigin).href, "_blank");
+        if (!connection.tab) {
           reject(new Error("Allow pop-ups for this site to sign in to Discord."));
           return;
         }
-        closePoll = setInterval(() => {
-          if (tab.closed) {
-            clearInterval(closePoll);
+        connection.closePoll = setInterval(() => {
+          if (connection.tab.closed) {
+            clearInterval(connection.closePoll);
             reject(new Error("Discord login tab was closed. Try again if you did not sign in."));
           } else if (Date.now() >= deadline) {
-            clearInterval(closePoll);
+            clearInterval(connection.closePoll);
             reject(new Error("Discord login timed out. Try again."));
           }
         }, 500);
       });
       if (generation !== this.generation) return;
+      connection.abort = new AbortController;
       const response = await fetch(new URL("/api/discord/me", this.apiOrigin), {
         headers: {
           Authorization: `Bearer ${sessionToken}`
         },
         cache: "no-store",
-        signal: AbortSignal.timeout(1e4)
+        signal: connection.abort.signal
       });
+      if (generation !== this.generation) return;
       if (!response.ok) throw new Error("Discord login server is unavailable.");
       const {user} = await response.json();
+      if (generation !== this.generation) return;
       if (!user?.id) throw new Error("Discord login server is unavailable.");
       this.sessionToken = sessionToken;
       this.status = 3;
       this.userId = user.id;
-      globalThis.clawAnalytics?.discordIdentity(user.id);
+      this.username = user.global_name || user.username;
+      globalThis.clawAnalytics?.discordIdentity(user.id, this.username);
     } catch (error) {
       if (generation === this.generation) {
         this.status = 4;
         this.error = error.message || "Discord login server is unavailable.";
       }
     } finally {
-      clearInterval(closePoll);
-      if (onMessage) window.removeEventListener("message", onMessage);
-      if (generation === this.generation) this.pending = false;
+      clearInterval(connection.closePoll);
+      if (connection.onMessage) window.removeEventListener("message", connection.onMessage);
+      if (this.activeConnection === connection) {
+        this.activeConnection = null;
+        this.pending = false;
+      }
     }
   },
-  async logout() {
+  async disconnect() {
+    const connection = this.activeConnection;
+    ++this.generation;
+    this.activeConnection = null;
+    this.pending = false;
+    this.status = 0;
+    this.error = "";
+    if (connection) {
+      clearInterval(connection.closePoll);
+      if (connection.onMessage) window.removeEventListener("message", connection.onMessage);
+      if (connection.tab && !connection.tab.closed) connection.tab.close();
+      if (connection.abort) connection.abort.abort();
+      if (connection.reject) connection.reject(new Error("Discord connection cancelled."));
+    }
+    if (this.sessionToken && globalThis.clawWebLobbies?.session) {
+      try {
+        await globalThis.clawWebLobbies.request("leave", "");
+      } catch (error) {
+        console.warn("Could not leave the Discord session during disconnect.", error);
+      }
+    }
     this.sessionToken = null;
     this.userId = null;
-    this.status = 0;
+    this.username = null;
     globalThis.clawAnalytics?.discordIdentity(null);
+  },
+  logout() {
+    return this.disconnect();
   },
   presence() {}
 };
@@ -361,6 +398,39 @@ Module.clawTextShaderSource = "uniform sampler2D texture;\nuniform vec2 resoluti
   textInput.spellcheck = false;
   controls.appendChild(textInput);
   Module.clawTouchText = [];
+  Module.clawMenuTextInput = false;
+  Module.clawSetMenuTextInput = active => {
+    const wasActive = Module.clawMenuTextInput;
+    Module.clawMenuTextInput = !!active;
+    if (wasActive && !Module.clawMenuTextInput && document.activeElement === textInput) {
+      textInput.blur();
+      Module.canvas.focus();
+    }
+  };
+  Module.clawFocusMenuTextInput = () => {
+    textInput.value = "";
+    textInput.focus({
+      preventScroll: true
+    });
+  };
+  Module.clawCopyMenuText = text => {
+    if (!navigator.clipboard || !navigator.clipboard.writeText) {
+      console.warn("Clipboard copy is unavailable in this browser.");
+      return;
+    }
+    navigator.clipboard.writeText(text).catch(error => console.warn("Could not copy menu text to the clipboard.", error));
+  };
+  Module.clawPasteMenuText = async () => {
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      console.warn("Clipboard paste is unavailable in this browser.");
+      return;
+    }
+    try {
+      submitText(await navigator.clipboard.readText());
+    } catch (error) {
+      console.warn("Could not paste menu text from the clipboard.", error);
+    }
+  };
   const keyboardPulses = [];
   let releaseKeyboardPulse = false;
   Module.clawTakeTouchKey = () => {
@@ -392,6 +462,17 @@ Module.clawTextShaderSource = "uniform sampler2D texture;\nuniform vec2 resoluti
   });
   textInput.addEventListener("keydown", event => {
     event.stopPropagation();
+    const control = event.ctrlKey || event.metaKey;
+    const editKey = [ "Backspace", "Delete", "ArrowLeft", "ArrowRight", "Home", "End" ].includes(event.key);
+    const clipboardKey = control && [ "a", "c", "x", "v" ].includes(event.key.toLowerCase());
+    if (Module.clawMenuTextInput && (editKey || clipboardKey)) {
+      event.preventDefault();
+      dispatchMenuKey(event.key, {
+        ctrlKey: control,
+        shiftKey: event.shiftKey
+      });
+      return;
+    }
     if (event.key === "Enter" || event.key === "Escape") {
       event.preventDefault();
       dispatchMenuKey(event.key);
@@ -543,17 +624,16 @@ Module.clawTextShaderSource = "uniform sampler2D texture;\nuniform vec2 resoluti
     menuSelectHeld = menuBackHeld = gameplayMenuHeld = false;
     update();
   }
-  function dispatchMenuKey(key) {
-    Module.canvas.dispatchEvent(new KeyboardEvent("keydown", {
+  function dispatchMenuKey(key, modifiers = {}) {
+    const code = /^[a-z]$/i.test(key) ? `Key${key.toUpperCase()}` : key;
+    const options = {
       key,
-      code: key,
-      bubbles: true
-    }));
-    Module.canvas.dispatchEvent(new KeyboardEvent("keyup", {
-      key,
-      code: key,
-      bubbles: true
-    }));
+      code,
+      bubbles: true,
+      ...modifiers
+    };
+    Module.canvas.dispatchEvent(new KeyboardEvent("keydown", options));
+    Module.canvas.dispatchEvent(new KeyboardEvent("keyup", options));
   }
   function stopMenuDirection(id) {
     const held = menuDirectionHeld.get(id);
@@ -640,6 +720,13 @@ Module.clawTextShaderSource = "uniform sampler2D texture;\nuniform vec2 resoluti
       update();
     }
   }, true);
+  window.addEventListener("pointerdown", function(event) {
+    if (event.pointerType === "touch" && event.target === Module.canvas && Module.clawMenuTextInput) {
+      event.preventDefault();
+      clear();
+      Module.clawFocusMenuTextInput();
+    }
+  }, true);
   controls.addEventListener("pointerdown", function(event) {
     if (editing) {
       event.preventDefault();
@@ -704,7 +791,10 @@ Module.clawTextShaderSource = "uniform sampler2D texture;\nuniform vec2 resoluti
     drags.clear();
     clear();
   });
-  window.addEventListener("claw-game-state-change", clear);
+  window.addEventListener("claw-game-state-change", () => {
+    Module.clawSetMenuTextInput(false);
+    clear();
+  });
   window.addEventListener("claw-developer-editing", clear);
   window.addEventListener("pagehide", clear);
   document.addEventListener("visibilitychange", function() {
@@ -916,7 +1006,7 @@ Module.clawComparisonDownload = function() {
   }
   async function load(pack, level = 0, progress = () => {}) {
     const m = await manifest(pack);
-    const files = m.files.filter(f => levelOf(f.path) === level && !(languages.has(pack) && f.path.toUpperCase() === "STRINGS.INI"));
+    const files = m.files.filter(f => (levelOf(f.path) === level || (pack === "BaseAssets" && level === 0 && /^LOADINGS\/LEVEL\d+\.PNG$/i.test(f.path))) && !(languages.has(pack) && f.path.toUpperCase() === "STRINGS.INI"));
     let cursor = 0;
     await Promise.all(Array.from({
       length: Math.min(4, files.length)
@@ -943,15 +1033,19 @@ Module.clawComparisonDownload = function() {
       status: 0,
       progress: 0
     };
+    Module.clawLanguageDownloadActive = true;
     load(pack, 0, (phase, detail, done, total, overall) => {
       state.progress = overall;
       showProgress(phase, detail, done, total);
     }).then(() => loadStrings(pack, (phase, detail, done, total) => showProgress(phase, detail, done, total))).then(() => {
       state.status = 1;
       Module.clawSelectedLanguage = pack;
+      Module.clawLanguageDownloadActive = false;
+      Module.setStatus("");
     }).catch(error => {
       state.status = -1;
       state.error = String(error);
+      Module.clawLanguageDownloadActive = false;
       Module.setStatus("Language download failed. Press Enter to retry.");
       console.error(error);
     });
@@ -969,13 +1063,11 @@ Module.clawComparisonDownload = function() {
       return;
     }
     ((async () => {
-      await load("BaseAssets", level, (phase, detail, done, total, overall) => {
+      await load("BaseAssets", level, (_phase, _detail, _done, _total, overall) => {
         state.progress = overall * .8;
-        showProgress(phase, detail, done, total);
       });
-      if (audioLanguage) await load(audioLanguage, level, (phase, detail, done, total, overall) => {
+      if (audioLanguage) await load(audioLanguage, level, (_phase, _detail, _done, _total, overall) => {
         state.progress = .8 + overall * .2;
-        showProgress(phase, detail, done, total);
       });
       state.status = 1;
       Module.setStatus("");
@@ -991,6 +1083,10 @@ Module.clawComparisonDownload = function() {
     addRunDependency("release-assets");
     ((async () => {
       await Module.clawStorageReady;
+      FS.mkdirTree("/BaseAssets/LOADINGS");
+      FS.mkdirTree("/BaseAssets/MUSICS");
+      FS.mkdirTree("/BaseAssets/PALETTES");
+      FS.mkdirTree("/BaseAssets/WORLDS");
       for (let i = 1; i <= 14; i++) {
         FS.mkdirTree("/BaseAssets/LEVEL" + i);
         FS.mkdirTree("/BaseAssets/TILES/LEVEL" + i);
@@ -1007,6 +1103,10 @@ Module.clawComparisonDownload = function() {
       } catch (_) {}
       // PLAY/comparison startup uses EN even when no saved language exists.
       if (Module.clawComparisonArguments?.().length) language = "EN";
+      if (globalThis.clawDiscordActivity?.quickPlayLevel) {
+        language = language || "EN";
+        audioLanguage = audioLanguage || language;
+      }
       if (packs.has(language) && language !== "BaseAssets") {
         await load(language, 0, showProgress);
         await loadStrings(language, showProgress);
@@ -2132,16 +2232,6 @@ var ___resumeException = ptr => {
   ptr = exceptionLast ??= new CppException(ptr);
   __Unwind_Resume(ptr);
 };
-
-var syscallGetVarargI = () => {
-  assert(SYSCALLS.varargs != undefined);
-  // the `+` prepended here is necessary to convince the JSCompiler that varargs is indeed a number.
-  var ret = HEAP32[((+SYSCALLS.varargs) >> 2)];
-  SYSCALLS.varargs += 4;
-  return ret;
-};
-
-var syscallGetVarargP = syscallGetVarargI;
 
 var PATH = {
   isAbs: path => path.charAt(0) === "/",
@@ -5218,6 +5308,37 @@ var SYSCALLS = {
   }
 };
 
+function ___syscall_chmod(path, mode) {
+  try {
+    path = SYSCALLS.getStr(path);
+    FS.chmod(path, mode);
+    return 0;
+  } catch (e) {
+    if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+    return -e.errno;
+  }
+}
+
+function ___syscall_fchmod(fd, mode) {
+  try {
+    FS.fchmod(fd, mode);
+    return 0;
+  } catch (e) {
+    if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+    return -e.errno;
+  }
+}
+
+var syscallGetVarargI = () => {
+  assert(SYSCALLS.varargs != undefined);
+  // the `+` prepended here is necessary to convince the JSCompiler that varargs is indeed a number.
+  var ret = HEAP32[((+SYSCALLS.varargs) >> 2)];
+  SYSCALLS.varargs += 4;
+  return ret;
+};
+
+var syscallGetVarargP = syscallGetVarargI;
+
 /** @type {!Int16Array} */ var HEAP16;
 
 function ___syscall_fcntl64(fd, cmd, varargs) {
@@ -5292,6 +5413,24 @@ function ___syscall_fdatasync(fd) {
 function ___syscall_fstat64(fd, buf) {
   try {
     return SYSCALLS.writeStat(buf, FS.fstat(fd));
+  } catch (e) {
+    if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
+    return -e.errno;
+  }
+}
+
+var INT53_MAX = 9007199254740992;
+
+var INT53_MIN = -9007199254740992;
+
+var bigintToI53Checked = num => (num < INT53_MIN || num > INT53_MAX) ? NaN : Number(num);
+
+function ___syscall_ftruncate64(fd, length) {
+  length = bigintToI53Checked(length);
+  try {
+    if (isNaN(length)) return -22;
+    FS.ftruncate(fd, length);
+    return 0;
   } catch (e) {
     if (typeof FS === "undefined" || !(e.name === "ErrnoError")) throw e;
     return -e.errno;
@@ -5603,12 +5742,6 @@ function ___syscall_unlinkat(dirfd, path, flags) {
 }
 
 var __abort_js = () => abort("native code called abort()");
-
-var INT53_MAX = 9007199254740992;
-
-var INT53_MIN = -9007199254740992;
-
-var bigintToI53Checked = num => (num < INT53_MIN || num > INT53_MAX) ? NaN : Number(num);
 
 function __gmtime_js(time, tmPtr) {
   time = bigintToI53Checked(time);
@@ -9994,8 +10127,8 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  895112: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
-  895189: () => {
+  915570: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
+  915647: () => {
     const token = Module.clawComparison && Module.clawComparison.token;
     if (typeof token !== "string") return 0;
     const size = lengthBytesUTF8(token) + 1;
@@ -10003,26 +10136,27 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  895426: () => {
+  915884: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
+  915948: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  895548: () => {
+  916070: () => {
     Module.clawHideCursor = function() {
       _clawHideCursor();
     };
   },
-  895611: () => {
+  916133: () => {
     Module.clawRedrawScreen = function() {
       _clawRedrawScreen();
     };
   },
-  895678: () => {
+  916200: () => {
     Module.clawResizeScreen = function() {
       _clawResizeScreen();
     };
     Module.clawResizeScreen();
   },
-  895772: () => {
+  916294: () => {
     Module.clawUpdateBackgroundAudio = function() {
       _clawUpdateBackgroundAudio();
     };
@@ -10038,29 +10172,36 @@ var ASM_CONSTS = {
       Module.clawUpdateBackgroundAudio();
     });
   },
-  896312: $0 => {
+  916834: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  896378: () => {
+  916900: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  896441: () => {
-    Module.setStatus("Gra została zatrzymana. Odśwież stronę, aby uruchomić ją ponownie.");
+  916963: ($0, $1) => {
+    Module.clawFail("Unable to continue game. (" + $0 + ")", {
+      error_code: $0,
+      error_resource_id: $1,
+      error_source: "game_runtime"
+    });
   },
-  896539: $0 => {
-    Module.setStatus("Błąd renderowania: " + UTF8ToString($0));
+  917098: () => {
+    Module.clawFail(Module.clawStartupError || "Game loop stopped.");
   },
-  896605: () => {
+  917168: $0 => {
+    Module.clawFail(UTF8ToString($0));
+  },
+  917207: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  896666: () => {
+  917268: () => {
     Module.clawTextShader = null;
   },
-  896700: () => {
+  917302: () => {
     Module.clawTextUniforms = {};
   },
-  896734: ($0, $1, $2, $3) => {
+  917336: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -10070,71 +10211,71 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  896887: ($0, $1, $2, $3, $4) => {
+  917489: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  896952: ($0, $1) => {
+  917554: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  897006: ($0, $1, $2) => {
+  917608: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  897065: ($0, $1) => {
+  917667: ($0, $1) => {
     Module.clawRequestLevel($0, UTF8ToString($1));
   },
-  897116: $0 => Module.clawLevels[$0].status,
-  897157: $0 => Module.clawLevels[$0].progress,
-  897200: $0 => Module.clawLevels[$0].status,
-  897241: $0 => {
+  917718: $0 => Module.clawLevels[$0].status,
+  917759: $0 => Module.clawLevels[$0].progress,
+  917802: $0 => Module.clawLevels[$0].status,
+  917843: $0 => {
     delete Module.clawLevels[$0];
   },
-  897275: ($0, $1) => {
+  917877: ($0, $1) => {
     globalThis.clawAnalytics?.end($0, $1);
   },
-  897318: ($0, $1, $2, $3, $4, $5) => {
+  917920: ($0, $1, $2, $3, $4, $5) => {
     globalThis.clawAnalytics?.levelStart($0, $1, $2, $3, $4, $5);
   },
-  897384: ($0, $1, $2) => {
-    globalThis.clawAnalytics?.complete($0, $1, $2);
+  917986: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+    globalThis.clawAnalytics?.complete($0, $1, $2, $3, $4, $5, $6, $7);
   },
-  897436: ($0, $1, $2, $3, $4) => {
+  918058: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.checkpoint($0, $1, $2, $3, $4);
   },
-  897498: ($0, $1, $2, $3) => {
+  918120: ($0, $1, $2, $3) => {
     globalThis.clawAnalytics?.stateChange?.(UTF8ToString($0), $1, $2, $3);
   },
-  897573: ($0, $1, $2, $3, $4) => {
+  918195: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.cheat?.(UTF8ToString($0), $1, $2, $3, $4);
   },
-  897646: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  918268: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.treasure?.($0, $1, $2, $3, $4, $5, $6, $7 ? UTF8ToString($7) : null);
   },
-  897746: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  918368: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.enemy?.(UTF8ToString($0), $1, $2, $3, $4, $5, UTF8ToString($6), $7 ? UTF8ToString($7) : null);
   },
-  897871: ($0, $1) => {
+  918493: ($0, $1) => {
     globalThis.clawAnalytics?.progress?.($0, $1);
   },
-  897921: ($0, $1, $2) => {
+  918543: ($0, $1, $2) => {
     globalThis.clawAnalytics?.position?.($0, $1, $2);
   },
-  897975: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  918597: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.death($0, $1, $2, $3, $4, $5, UTF8ToString($6), $7 ? UTF8ToString($7) : null);
   },
-  898084: ($0, $1, $2, $3, $4) => {
+  918706: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.route?.($0, $1, $2, $3, $4);
   },
-  898139: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
-  898239: ($0, $1, $2, $3, $4, $5) => {
+  918761: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
+  918861: ($0, $1, $2, $3, $4, $5) => {
     if (!Module.clawMapPointer) return;
     const point = Module.clawMapPointer($1, $2, $3, $4, $5);
     HEAPF32[$0 >> 2] = point.x;
     HEAPF32[($0 >> 2) + 1] = point.y;
   },
-  898398: () => {
+  919020: () => {
     Module.clawPaletteShader = null;
   },
-  898433: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  919055: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     try {
       Module.clawRenderPalette($0, $1, $2, $3, $4, $5, $6, $7);
       return 1;
@@ -10144,83 +10285,161 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  898604: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  898667: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  898730: $0 => {
-    Module.clawRequestLanguage(UTF8ToString($0));
-  },
-  898778: () => !!(globalThis.CLAW_ANALYTICS_CONFIG?.leaderboard_api && globalThis.CLAW_ANALYTICS_CONFIG?.token),
-  898887: () => !!globalThis.clawDiscordActivity,
-  898932: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
-  898999: $0 => {
-    Module.clawRequestLanguage(UTF8ToString($0));
-  },
-  899049: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status ?? -1,
-  899116: () => {
-    globalThis.clawAnalytics?.showLeaderboards?.();
-  },
-  899168: () => {
-    globalThis.clawAnalytics?.applicationQuit?.();
-  },
-  899219: () => {
-    Module.clawQuit();
-  },
-  899242: () => Module.clawTouchMode ? 1 : 0,
-  899283: ($0, $1, $2) => {
+  919226: ($0, $1, $2) => {
     globalThis.clawAnalytics?.menu(UTF8ToString($0), UTF8ToString($1), $2);
   },
-  899359: () => {
+  919302: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  919365: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  919428: $0 => {
+    Module.clawRequestLanguage(UTF8ToString($0));
+  },
+  919476: () => !!(globalThis.CLAW_ANALYTICS_CONFIG?.leaderboard_api && globalThis.CLAW_ANALYTICS_CONFIG?.token),
+  919585: () => !!globalThis.clawDiscordActivity,
+  919630: () => !!globalThis.clawDiscordActivity?.embedded,
+  919685: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
+  919752: $0 => {
+    Module.clawRequestLanguage(UTF8ToString($0));
+  },
+  919802: $0 => {
+    if (Module.clawSetMenuTextInput) Module.clawSetMenuTextInput(!!$0); else Module.clawMenuTextInput = !!$0;
+  },
+  919912: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status ?? -1,
+  919979: () => {
+    if (Module.clawFocusMenuTextInput) Module.clawFocusMenuTextInput();
+  },
+  920051: () => {
+    globalThis.clawAnalytics?.showLeaderboards?.();
+  },
+  920103: () => {
+    globalThis.clawAnalytics?.applicationQuit?.();
+  },
+  920154: () => {
+    Module.clawQuit();
+  },
+  920177: () => Module.clawTouchMode ? 1 : 0,
+  920218: $0 => {
+    if (Module.clawCopyMenuText) Module.clawCopyMenuText(UTF8ToString($0));
+  },
+  920294: () => {
+    if (Module.clawPasteMenuText) Module.clawPasteMenuText();
+  },
+  920356: () => {
     Module.clawImportSave();
   },
-  899388: () => {
+  920385: () => {
     Module.clawExportSave();
   },
-  899417: () => Module.clawTouchSettings.enabled(),
-  899464: () => Module.clawTouchSettings.style(),
-  899509: () => Module.clawTouchSettings.size(),
-  899553: () => {
+  920414: () => Module.clawTouchSettings.enabled(),
+  920461: () => Module.clawTouchSettings.style(),
+  920506: () => Module.clawTouchSettings.size(),
+  920550: () => {
     Module.clawTouchSettings.toggle();
   },
-  899592: () => {
+  920589: () => {
     Module.clawTouchSettings.cycleStyle();
   },
-  899635: () => {
+  920632: () => {
     Module.clawTouchSettings.cycleSize();
   },
-  899677: $0 => Module.clawTouchSettings.action($0),
-  899725: $0 => {
+  920674: $0 => Module.clawTouchSettings.action($0),
+  920722: $0 => {
     Module.clawTouchSettings.toggleAction($0);
   },
-  899772: () => {
+  920769: () => {
     Module.clawTouchSettings.reorganize();
   },
-  899815: () => {
+  920812: () => {
     Module.clawTouchSettings.finishReorganizing();
   },
-  899866: () => {
+  920863: () => {
     Module.clawTouchSettings.resetPositions();
   },
-  899913: () => {
+  920910: ($0, $1, $2) => {
+    const id = $0;
+    const persist = !!$2;
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = UTF8ToString($1);
+    input.style.position = "fixed";
+    input.style.left = "-10000px";
+    document.body.appendChild(input);
+    let finished = false;
+    const complete = (path, error) => {
+      if (finished) return;
+      finished = true;
+      Module.ccall("clawMenuFilePickerCompleted", null, [ "number", "string", "string" ], [ id, path || "", error || "" ]);
+      input.remove();
+    };
+    input.addEventListener("change", async () => {
+      if (!input.files || input.files.length === 0) {
+        complete("", "");
+        return;
+      }
+      try {
+        const directory = persist ? "/save/CustomAudio" : "/tmp";
+        FS.mkdirTree(directory);
+        if (input.files[0].size > 128 * 1024 * 1024) throw new Error("The selected file is too large.");
+        const fileName = input.files[0].name;
+        const uniqueName = self.crypto && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${id}`;
+        const storageName = `Claw2Track-${uniqueName}-${fileName}`;
+        const path = persist ? `${directory}/${storageName}` : `${directory}/claw-picked-${id}`;
+        FS.writeFile(path, new Uint8Array(await input.files[0].arrayBuffer()));
+        if (persist) {
+          if (!Module.clawSyncAsync) throw new Error("Persistent storage is unavailable.");
+          await Module.clawSyncAsync();
+        }
+        complete(path, "");
+      } catch (error) {
+        complete("", String(error));
+      }
+    }, {
+      once: true
+    });
+    input.addEventListener("cancel", () => complete("", ""), {
+      once: true
+    });
+    input.click();
+  },
+  922349: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  900035: () => globalThis.clawAnalytics?.enabled() ? 1 : 0,
-  900091: () => globalThis.clawAnalytics?.canEnable() ? 1 : 0,
-  900149: () => {
+  922471: () => globalThis.clawAnalytics?.enabled() ? 1 : 0,
+  922527: () => globalThis.clawAnalytics?.canEnable() ? 1 : 0,
+  922585: () => {
     const analytics = globalThis.clawAnalytics;
     analytics?.setEnabled(!analytics.enabled());
   },
-  900242: () => {
+  922678: ($0, $1) => {
+    try {
+      const bytes = FS.readFile(UTF8ToString($0));
+      const url = URL.createObjectURL(new Blob([ bytes ], {
+        type: "application/octet-stream"
+      }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = UTF8ToString($1);
+      link.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        FS.unlink(UTF8ToString($0));
+      }, 1e3);
+    } catch (error) {
+      Module.setStatus("Player profile download failed: " + error);
+      console.error(error);
+    }
+  },
+  923116: () => {
     globalThis.clawAnalytics?.quitLevel();
   },
-  900285: () => Module.clawTouchMode ? 1 : 0,
-  900326: () => {
+  923159: () => Module.clawTouchMode ? 1 : 0,
+  923200: () => {
     if (Module.clawUpdateBackgroundAudio) Module.clawUpdateBackgroundAudio();
   },
-  900404: () => Module.clawTouchActions || 0,
-  900445: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
-  900513: () => {
+  923278: () => Module.clawTouchActions || 0,
+  923319: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
+  923387: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -10236,7 +10455,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  900827: $0 => {
+  923701: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -10244,13 +10463,13 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  901042: () => {
+  923916: () => {
     Module["SDL3"].dummy_audio = {};
     Module["SDL3"].dummy_audio.timers = [];
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  901219: ($0, $1, $2, $3, $4) => {
+  924093: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -10259,14 +10478,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  901411: $0 => {
+  924285: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  901542: () => {
+  924416: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -10274,13 +10493,13 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  901689: () => {
+  924563: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     }
     return false;
   },
-  901843: () => {
+  924717: () => {
     var SDL3 = Module["SDL3"];
     if (typeof (SDL3.audio_playback) === "undefined") {
       SDL3.audio_playback = {};
@@ -10302,8 +10521,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  902422: () => Module["SDL3"].audioContext.sampleRate,
-  902473: ($0, $1, $2, $3) => {
+  925296: () => Module["SDL3"].audioContext.sampleRate,
+  925347: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10340,7 +10559,7 @@ var ASM_CONSTS = {
       }).then(have_microphone).catch(no_microphone);
     }
   },
-  904164: ($0, $1, $2, $3) => {
+  927038: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     SDL3.audio_playback.scriptProcessorNode = SDL3.audioContext["createScriptProcessor"]($1, 0, $0);
     SDL3.audio_playback.scriptProcessorNode["onaudioprocess"] = function(e) {
@@ -10372,7 +10591,7 @@ var ASM_CONSTS = {
       SDL3.audio_playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  905480: $0 => {
+  928354: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10406,7 +10625,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  906636: ($0, $1) => {
+  929510: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var buf = SDL3.CPtrToHeap32Index($0);
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -10420,7 +10639,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  907169: ($0, $1) => {
+  930043: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -10439,11 +10658,11 @@ var ASM_CONSTS = {
       }
     }
   },
-  907796: () => {
+  930670: () => {
     Module["SDL3"].camera = {};
   },
-  907828: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  907887: ($0, $1, $2, $3, $4) => {
+  930702: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  930761: ($0, $1, $2, $3, $4) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -10517,7 +10736,7 @@ var ASM_CONSTS = {
       outcome(device, 0, 0, 0, 0);
     });
   },
-  910193: () => {
+  933067: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -10525,7 +10744,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  910444: ($0, $1, $2) => {
+  933318: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -10538,19 +10757,19 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  910822: () => {
+  933696: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  910909: $0 => {
+  933783: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"] || !gamepad["vibrationActuator"]["effects"] || !gamepad["vibrationActuator"]["effects"]["includes"]("trigger-rumble")) {
       return false;
     }
     return true;
   },
-  911155: $0 => {
+  934029: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10566,7 +10785,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  911620: $0 => {
+  934494: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10582,14 +10801,14 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  912092: $0 => {
+  934966: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
     }
     return gamepad["id"]["toLowerCase"]()["indexOf"]("xinput") >= 0;
   },
-  912235: () => {
+  935109: () => {
     const os = ([ "Android", "Linux", "iPhone", "Macintosh", "Windows" ]);
     const ua = navigator["userAgent"];
     for (let i = 0; i < os.length; i++) {
@@ -10599,7 +10818,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  912445: ($0, $1, $2) => {
+  935319: ($0, $1, $2) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       stringToUTF8("\0", $1, $2);
@@ -10621,14 +10840,14 @@ var ASM_CONSTS = {
     }
     stringToUTF8(output.trim(), $1, $2);
   },
-  913123: $0 => {
+  935997: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"]) {
       return false;
     }
     return true;
   },
-  913251: ($0, $1, $2, $3, $4) => {
+  936125: ($0, $1, $2, $3, $4) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return false;
@@ -10643,7 +10862,7 @@ var ASM_CONSTS = {
     });
     return true;
   },
-  913564: ($0, $1) => {
+  936438: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -10677,7 +10896,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  914272: ($0, $1, $2, $3) => {
+  937146: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -10708,7 +10927,7 @@ var ASM_CONSTS = {
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
     return true;
   },
-  915021: () => {
+  937895: () => {
     var SDL3 = Module["SDL3"];
     SDL3["mouse_x"] = 0;
     SDL3["mouse_y"] = 0;
@@ -10734,7 +10953,7 @@ var ASM_CONSTS = {
       }
     });
   },
-  915709: ($0, $1, $2, $3, $4) => {
+  938583: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -10755,20 +10974,20 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  916367: $0 => {
+  939241: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  916450: () => {
+  939324: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  916519: () => Module["SDL3"]["mouse_x"],
-  916557: () => Module["SDL3"]["mouse_y"],
-  916595: $0 => Module["SDL3"]["mouse_buttons"][$0],
-  916643: $0 => {
+  939393: () => Module["SDL3"]["mouse_x"],
+  939431: () => Module["SDL3"]["mouse_y"],
+  939469: $0 => Module["SDL3"]["mouse_buttons"][$0],
+  939517: $0 => {
     var data = $0;
     if (document.sdlEventHandlerLockKeysCheck) {
       document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
@@ -10780,10 +10999,10 @@ var ASM_CONSTS = {
     };
     document.addEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  917197: () => {
+  940071: () => {
     document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  917281: $0 => {
+  940155: $0 => {
     var target = document;
     if (target) {
       target.sdlEventHandlerMouseButtonUpGlobal = function(event) {
@@ -10797,7 +11016,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
     }
   },
-  917642: $0 => {
+  940516: $0 => {
     var SDL3 = Module["SDL3"];
     if (SDL3.makePointerEventCStruct === undefined) {
       SDL3.makePointerEventCStruct = function(left, top, event) {
@@ -10835,7 +11054,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  918634: $0 => {
+  941508: $0 => {
     var id = UTF8ToString($0);
     try {
       var canvas = document.querySelector(id);
@@ -10845,23 +11064,23 @@ var ASM_CONSTS = {
     } catch (e) {}
     return false;
   },
-  918800: () => document.hasFocus(),
-  918832: () => {
+  941674: () => document.hasFocus(),
+  941706: () => {
     var target = document;
     if (target) {
       target.removeEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
       target.sdlEventHandlerMouseButtonUpGlobal = undefined;
     }
   },
-  919014: () => document.body.clientWidth,
-  919052: () => document.body.clientHeight,
-  919091: () => window.innerWidth,
-  919121: () => window.innerHeight,
-  919152: () => window.outerWidth,
-  919182: () => window.outerHeight,
-  919213: () => window.pageXOffset,
-  919244: () => window.pageYOffset,
-  919275: ($0, $1) => {
+  941888: () => document.body.clientWidth,
+  941926: () => document.body.clientHeight,
+  941965: () => window.innerWidth,
+  941995: () => window.innerHeight,
+  942026: () => window.outerWidth,
+  942056: () => window.outerHeight,
+  942087: () => window.pageXOffset,
+  942118: () => window.pageYOffset,
+  942149: ($0, $1) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10899,7 +11118,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerPointerGeneric);
     }
   },
-  920663: ($0, $1, $2) => {
+  943537: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -10979,7 +11198,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  923030: $0 => {
+  945904: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -10995,7 +11214,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  923860: $0 => {
+  946734: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       target.removeEventListener("pointerenter", target.sdlEventHandlerPointerEnter);
@@ -11010,7 +11229,7 @@ var ASM_CONSTS = {
       target.sdlEventHandlerPointerGeneric = undefined;
     }
   },
-  924594: () => {
+  947468: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -11022,7 +11241,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  924803: () => {
+  947677: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -11030,14 +11249,14 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  925056: () => window.innerWidth,
-  925086: () => window.innerHeight,
-  925117: $0 => {
+  947930: () => window.innerWidth,
+  947960: () => window.innerHeight,
+  947991: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  925226: ($0, $1) => {
+  948100: ($0, $1) => {
     var pngData = HEAPU8.buffer instanceof ArrayBuffer ? HEAPU8.subarray($0, $0 + $1) : HEAPU8.slice($0, $0 + $1);
     var blob = new Blob([ pngData ], {
       type: "image/png"
@@ -11055,12 +11274,12 @@ var ASM_CONSTS = {
     }
     link.href = url;
   },
-  925719: () => {
+  948593: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  925793: () => window.innerWidth,
-  925823: () => window.innerHeight,
-  925854: $0 => {
+  948667: () => window.innerWidth,
+  948697: () => window.innerHeight,
+  948728: $0 => {
     var canvas = document.querySelector(UTF8ToString($0));
     canvas.SDL3_original_position = canvas.style.position;
     canvas.SDL3_original_top = canvas.style.top;
@@ -11081,7 +11300,7 @@ var ASM_CONSTS = {
     canvas.style.top = "0";
     canvas.style.left = "0";
   },
-  926552: () => {
+  949426: () => {
     var div = document.getElementById("SDL3_fill_document_background_elements");
     if (div) {
       if (div.SDL3_canvas_nextsib) {
@@ -11098,7 +11317,7 @@ var ASM_CONSTS = {
       div.remove();
     }
   },
-  927111: () => {
+  949985: () => {
     if (window.matchMedia) {
       var SDL3 = Module["SDL3"];
       SDL3.eventHandlerThemeChanged = function(event) {
@@ -11108,7 +11327,7 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  927433: ($0, $1, $2, $3, $4) => {
+  950307: ($0, $1, $2, $3, $4) => {
     var title = UTF8ToString($0);
     var message = UTF8ToString($1);
     var background = UTF8ToString($2);
@@ -11128,7 +11347,7 @@ var ASM_CONSTS = {
     dialog.append(p);
     dialog.showModal();
   },
-  927974: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  950848: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     var dialog_id = UTF8ToString($0);
     var text = UTF8ToString($1);
     var responseId = $2;
@@ -11169,7 +11388,7 @@ var ASM_CONSTS = {
     dialog.append(button);
     return true;
   },
-  928983: $0 => {
+  951857: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -11177,7 +11396,7 @@ var ASM_CONSTS = {
     }
     return dialog.open;
   },
-  929121: $0 => {
+  951995: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -11189,17 +11408,17 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  929303: ($0, $1) => {
+  952177: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  929360: $0 => {
+  952234: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  929400: () => {
+  952274: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  929517: $0 => {
+  952391: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
@@ -11211,6 +11430,10 @@ var ASM_CONSTS = {
 
 function clawActivityConnect() {
   globalThis.clawDiscordActivity.connect();
+}
+
+function clawActivityDisconnect() {
+  globalThis.clawDiscordActivity?.disconnect?.();
 }
 
 function clawActivityStatus() {
@@ -11318,6 +11541,8 @@ var _main = Module["_main"] = makeInvalidEarlyAccess("_main");
 
 var _clawValidateUserProfile = Module["_clawValidateUserProfile"] = makeInvalidEarlyAccess("_clawValidateUserProfile");
 
+var _clawMenuFilePickerCompleted = Module["_clawMenuFilePickerCompleted"] = makeInvalidEarlyAccess("_clawMenuFilePickerCompleted");
+
 var _SDL_malloc = Module["_SDL_malloc"] = makeInvalidEarlyAccess("_SDL_malloc");
 
 var _SDL_calloc = Module["_SDL_calloc"] = makeInvalidEarlyAccess("_SDL_calloc");
@@ -11402,6 +11627,7 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports["clawResizeScreen"] !== "undefined", "missing Wasm export: clawResizeScreen");
   assert(typeof wasmExports["__main_argc_argv"] !== "undefined", "missing Wasm export: __main_argc_argv");
   assert(typeof wasmExports["clawValidateUserProfile"] !== "undefined", "missing Wasm export: clawValidateUserProfile");
+  assert(typeof wasmExports["clawMenuFilePickerCompleted"] !== "undefined", "missing Wasm export: clawMenuFilePickerCompleted");
   assert(typeof wasmExports["SDL_malloc"] !== "undefined", "missing Wasm export: SDL_malloc");
   assert(typeof wasmExports["SDL_calloc"] !== "undefined", "missing Wasm export: SDL_calloc");
   assert(typeof wasmExports["Emscripten_force_free"] !== "undefined", "missing Wasm export: Emscripten_force_free");
@@ -11447,6 +11673,7 @@ function assignWasmExports(wasmExports) {
   _clawResizeScreen = Module["_clawResizeScreen"] = createExportWrapper("clawResizeScreen", wasmExports["clawResizeScreen"], 0);
   _main = Module["_main"] = createExportWrapper("__main_argc_argv", wasmExports["__main_argc_argv"], 2);
   _clawValidateUserProfile = Module["_clawValidateUserProfile"] = createExportWrapper("clawValidateUserProfile", wasmExports["clawValidateUserProfile"], 2);
+  _clawMenuFilePickerCompleted = Module["_clawMenuFilePickerCompleted"] = createExportWrapper("clawMenuFilePickerCompleted", wasmExports["clawMenuFilePickerCompleted"], 3);
   _SDL_malloc = Module["_SDL_malloc"] = createExportWrapper("SDL_malloc", wasmExports["SDL_malloc"], 1);
   _SDL_calloc = Module["_SDL_calloc"] = createExportWrapper("SDL_calloc", wasmExports["SDL_calloc"], 2);
   _Emscripten_force_free = Module["_Emscripten_force_free"] = createExportWrapper("Emscripten_force_free", wasmExports["Emscripten_force_free"], 1);
@@ -11497,9 +11724,12 @@ var wasmImports = {
   /** @export */ __cxa_throw: ___cxa_throw,
   /** @export */ __cxa_uncaught_exceptions: ___cxa_uncaught_exceptions,
   /** @export */ __resumeException: ___resumeException,
+  /** @export */ __syscall_chmod: ___syscall_chmod,
+  /** @export */ __syscall_fchmod: ___syscall_fchmod,
   /** @export */ __syscall_fcntl64: ___syscall_fcntl64,
   /** @export */ __syscall_fdatasync: ___syscall_fdatasync,
   /** @export */ __syscall_fstat64: ___syscall_fstat64,
+  /** @export */ __syscall_ftruncate64: ___syscall_ftruncate64,
   /** @export */ __syscall_getcwd: ___syscall_getcwd,
   /** @export */ __syscall_getdents64: ___syscall_getdents64,
   /** @export */ __syscall_ioctl: ___syscall_ioctl,
@@ -11516,6 +11746,7 @@ var wasmImports = {
   /** @export */ _localtime_js: __localtime_js,
   /** @export */ _tzset_js: __tzset_js,
   /** @export */ clawActivityConnect,
+  /** @export */ clawActivityDisconnect,
   /** @export */ clawActivityError,
   /** @export */ clawActivityPresence,
   /** @export */ clawActivityStatus,
@@ -11761,6 +11992,7 @@ var wasmImports = {
   /** @export */ invoke_diii,
   /** @export */ invoke_fiff,
   /** @export */ invoke_fii,
+  /** @export */ invoke_fiifi,
   /** @export */ invoke_fiii,
   /** @export */ invoke_fiiii,
   /** @export */ invoke_i,
@@ -11799,6 +12031,7 @@ var wasmImports = {
   /** @export */ invoke_viffffi,
   /** @export */ invoke_vifi,
   /** @export */ invoke_vii,
+  /** @export */ invoke_viif,
   /** @export */ invoke_viiff,
   /** @export */ invoke_viifff,
   /** @export */ invoke_viiffif,
@@ -11806,6 +12039,7 @@ var wasmImports = {
   /** @export */ invoke_viii,
   /** @export */ invoke_viiif,
   /** @export */ invoke_viiiffffiii,
+  /** @export */ invoke_viiifffii,
   /** @export */ invoke_viiii,
   /** @export */ invoke_viiiif,
   /** @export */ invoke_viiiifi,
@@ -12064,6 +12298,17 @@ function invoke_viiiiif(index, a1, a2, a3, a4, a5, a6) {
   }
 }
 
+function invoke_viiifffii(index, a1, a2, a3, a4, a5, a6, a7, a8) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7, a8);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_viiiiiii(index, a1, a2, a3, a4, a5, a6, a7) {
   var sp = stackSave();
   try {
@@ -12273,6 +12518,72 @@ function invoke_vijj(index, a1, a2, a3) {
   }
 }
 
+function invoke_viiif(index, a1, a2, a3, a4) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viif(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_iiij(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2, a3);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_vif(index, a1, a2) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_fii(index, a1, a2) {
+  var sp = stackSave();
+  try {
+    return getWasmTableEntry(index)(a1, a2);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viiiifi(index, a1, a2, a3, a4, a5, a6) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
 function invoke_jii(index, a1, a2) {
   var sp = stackSave();
   try {
@@ -12318,32 +12629,10 @@ function invoke_vijiii(index, a1, a2, a3, a4, a5) {
   }
 }
 
-function invoke_vif(index, a1, a2) {
+function invoke_fiifi(index, a1, a2, a3, a4) {
   var sp = stackSave();
   try {
-    getWasmTableEntry(index)(a1, a2);
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_viiif(index, a1, a2, a3, a4) {
-  var sp = stackSave();
-  try {
-    getWasmTableEntry(index)(a1, a2, a3, a4);
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_viiiifi(index, a1, a2, a3, a4, a5, a6) {
-  var sp = stackSave();
-  try {
-    getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6);
+    return getWasmTableEntry(index)(a1, a2, a3, a4);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
@@ -12366,28 +12655,6 @@ function invoke_viiffiii(index, a1, a2, a3, a4, a5, a6, a7) {
   var sp = stackSave();
   try {
     getWasmTableEntry(index)(a1, a2, a3, a4, a5, a6, a7);
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_iiij(index, a1, a2, a3) {
-  var sp = stackSave();
-  try {
-    return getWasmTableEntry(index)(a1, a2, a3);
-  } catch (e) {
-    stackRestore(sp);
-    if (!(e instanceof EmscriptenEH)) throw e;
-    _setThrew(1, 0);
-  }
-}
-
-function invoke_fii(index, a1, a2) {
-  var sp = stackSave();
-  try {
-    return getWasmTableEntry(index)(a1, a2);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;

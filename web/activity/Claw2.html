@@ -232,7 +232,7 @@ globalThis.CLAW_ANALYTICS_CONFIG = {
   "path_prefix" : "/Claw2/",
   "token" : "phc_u9Z37RpbZc5hg35L3NUHMFg9ZhGocaAm2YrExaTPjC7h"
 };
-globalThis.CLAW_WEB_BUILD_ID = '20261111T222241Z';
+globalThis.CLAW_WEB_BUILD_ID = '20261112T013304Z';
 // Explicit events only. Analytics must never hold up or fail the game.
 (function (root) {
     'use strict';
@@ -474,7 +474,7 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T222241Z';
     const scrubErrorText = value => String(value).slice(0, 12000)
         .replace(/https?:\/\/[^\s)]+/g, value => cleanURL(value))
         .replace(/\b(?:phc_|phx_)[A-Za-z0-9]+\b/g, '[redacted]');
-    function captureError(error, phase) {
+    function captureError(error, phase, context) {
         if (stopped || comparison() || seenErrors.size >= 20) return;
         const message = scrubErrorText(typeof error === 'string' ? error : error?.message || 'Unknown game failure');
         const stack = error?.stack ? scrubErrorText(error.stack) : '';
@@ -488,6 +488,9 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T222241Z';
             level: level?.level, level_attempt_id: level?.level_attempt_id,
             asset_version: root.Module?.clawAssetVersions?.BaseAssets || 'unknown',
             is_test: new URL(location.href).searchParams.get('analytics_test') === '1'};
+        if (Number.isSafeInteger(context?.error_code)) properties.error_code = context.error_code;
+        if (Number.isSafeInteger(context?.error_resource_id)) properties.error_resource_id = context.error_resource_id;
+        if (context?.error_source === 'game_runtime') properties.error_source = context.error_source;
         if (sdk) sdk.captureException(normalized, properties);
         else errors.push([normalized, properties]);
     }
@@ -934,11 +937,14 @@ var Module = {
                 Module.clawFail(error);
             }
     },
-    clawFail: function (error) {
-        globalThis.clawAnalytics?.error(error, Module.clawPhase || 'loading');
-        globalThis.clawAnalytics?.once('game_error', {phase: Module.clawPhase || 'loading'});
+    clawFail: function (error, errorContext) {
+        const phase = Module.clawPhase || 'loading';
+        globalThis.clawAnalytics?.error(error, phase, errorContext);
+        globalThis.clawAnalytics?.once('game_error', {phase, ...errorContext});
         Module.clawPhase = 'failed';
-        Module.clawShowError('Game error: ' + error);
+        const detail = typeof error === 'string' ? error
+            : error?.stack || error?.message || (typeof error?.code === 'number' ? 'Error code ' + error.code : 'Unknown runtime error');
+        Module.clawShowError('Game error: ' + detail + '\n' + (Module.clawRecentLogs || []).join('\n'));
         console.error(error);
     },
     clawShowError: function (error) {
@@ -965,6 +971,8 @@ var Module = {
         }, 150);
     },
     printErr: function (text) {
+        (Module.clawRecentLogs ||= []).push(String(text));
+        if (Module.clawRecentLogs.length > 30) Module.clawRecentLogs.shift();
         if (text.includes('[info]')) console.info(text);
         else if (text.includes('[warning]')) console.warn(text);
         else console.error(text);
@@ -1030,6 +1038,13 @@ document.getElementById('loading-error-dismiss').addEventListener('click', () =>
 });
 window.addEventListener('error', event => Module.clawFail(event.error || event.message));
 window.addEventListener('unhandledrejection', event => Module.clawFail(event.reason));
+// Keep engine diagnostics reachable even when a stalled transition emits no error.
+window.addEventListener('keydown', event => {
+    if (event.ctrlKey && event.shiftKey && event.code === 'F8') {
+        event.preventDefault();
+        Module.clawShowError((Module.clawRecentLogs || []).join('\n') || Module.clawLastStatus || Module.clawPhase);
+    }
+});
 console.info('Claw Web', {browser:navigator.userAgent, language:navigator.language,
     cores:navigator.hardwareConcurrency, memoryGiB:navigator.deviceMemory,
     screen:[screen.width,screen.height], viewport:[innerWidth,innerHeight],

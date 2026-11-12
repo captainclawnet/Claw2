@@ -9692,6 +9692,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
       error: "",
       generation: 0,
       quickPlayLevel: 0,
+      embedded: new URLSearchParams(locationSearch).has("frame_id"),
       async connect() {
         if ([ 1, 2, 3 ].includes(this.status)) return;
         const generation = ++this.generation;
@@ -9700,7 +9701,9 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
         this.error = "";
         try {
           if (!new URLSearchParams(locationSearch).has("frame_id")) throw new Error("Open this build as a Discord Activity.");
-          sdk ?? (sdk = new SDK(config2.clientId));
+          sdk ?? (sdk = new SDK(config2.clientId, {
+            disableConsoleLogOverride: true
+          }));
           this.quickPlayLevel = quickPlayLevel(sdk.customId);
           await sdk.ready();
           if (!isCurrent()) return;
@@ -10493,7 +10496,7 @@ Module.clawComparisonDownload = function() {
   }
   async function load(pack, level = 0, progress = () => {}) {
     const m = await manifest(pack);
-    const files = m.files.filter(f => levelOf(f.path) === level && !(languages.has(pack) && f.path.toUpperCase() === "STRINGS.INI"));
+    const files = m.files.filter(f => (levelOf(f.path) === level || (pack === "BaseAssets" && level === 0 && /^LOADINGS\/LEVEL\d+\.PNG$/i.test(f.path))) && !(languages.has(pack) && f.path.toUpperCase() === "STRINGS.INI"));
     let cursor = 0;
     await Promise.all(Array.from({
       length: Math.min(4, files.length)
@@ -10550,13 +10553,11 @@ Module.clawComparisonDownload = function() {
       return;
     }
     ((async () => {
-      await load("BaseAssets", level, (phase, detail, done, total, overall) => {
+      await load("BaseAssets", level, (_phase, _detail, _done, _total, overall) => {
         state.progress = overall * .8;
-        showProgress(phase, detail, done, total);
       });
-      if (audioLanguage) await load(audioLanguage, level, (phase, detail, done, total, overall) => {
+      if (audioLanguage) await load(audioLanguage, level, (_phase, _detail, _done, _total, overall) => {
         state.progress = .8 + overall * .2;
-        showProgress(phase, detail, done, total);
       });
       state.status = 1;
       Module.setStatus("");
@@ -10574,6 +10575,8 @@ Module.clawComparisonDownload = function() {
       await Module.clawStorageReady;
       FS.mkdirTree("/BaseAssets/LOADINGS");
       FS.mkdirTree("/BaseAssets/MUSICS");
+      FS.mkdirTree("/BaseAssets/PALETTES");
+      FS.mkdirTree("/BaseAssets/WORLDS");
       for (let i = 1; i <= 14; i++) {
         FS.mkdirTree("/BaseAssets/LEVEL" + i);
         FS.mkdirTree("/BaseAssets/TILES/LEVEL" + i);
@@ -10590,6 +10593,10 @@ Module.clawComparisonDownload = function() {
       } catch (_) {}
       // PLAY/comparison startup uses EN even when no saved language exists.
       if (Module.clawComparisonArguments?.().length) language = "EN";
+      if (globalThis.clawDiscordActivity?.quickPlayLevel) {
+        language = language || "EN";
+        audioLanguage = audioLanguage || language;
+      }
       if (packs.has(language) && language !== "BaseAssets") {
         await load(language, 0, showProgress);
         await loadStrings(language, showProgress);
@@ -19610,8 +19617,8 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  912371: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
-  912448: () => {
+  912483: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
+  912560: () => {
     const token = Module.clawComparison && Module.clawComparison.token;
     if (typeof token !== "string") return 0;
     const size = lengthBytesUTF8(token) + 1;
@@ -19619,27 +19626,27 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  912685: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
-  912749: () => {
+  912797: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
+  912861: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  912871: () => {
+  912983: () => {
     Module.clawHideCursor = function() {
       _clawHideCursor();
     };
   },
-  912934: () => {
+  913046: () => {
     Module.clawRedrawScreen = function() {
       _clawRedrawScreen();
     };
   },
-  913001: () => {
+  913113: () => {
     Module.clawResizeScreen = function() {
       _clawResizeScreen();
     };
     Module.clawResizeScreen();
   },
-  913095: () => {
+  913207: () => {
     Module.clawUpdateBackgroundAudio = function() {
       _clawUpdateBackgroundAudio();
     };
@@ -19655,29 +19662,36 @@ var ASM_CONSTS = {
       Module.clawUpdateBackgroundAudio();
     });
   },
-  913635: $0 => {
+  913747: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  913701: () => {
+  913813: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  913764: () => {
-    Module.setStatus("Gra została zatrzymana. Odśwież stronę, aby uruchomić ją ponownie.");
+  913876: ($0, $1) => {
+    Module.clawFail("Unable to continue game. (" + $0 + ")", {
+      error_code: $0,
+      error_resource_id: $1,
+      error_source: "game_runtime"
+    });
   },
-  913862: $0 => {
-    Module.setStatus("Błąd renderowania: " + UTF8ToString($0));
+  914011: () => {
+    Module.clawFail(Module.clawStartupError || "Game loop stopped.");
   },
-  913928: () => {
+  914081: $0 => {
+    Module.clawFail(UTF8ToString($0));
+  },
+  914120: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  913989: () => {
+  914181: () => {
     Module.clawTextShader = null;
   },
-  914023: () => {
+  914215: () => {
     Module.clawTextUniforms = {};
   },
-  914057: ($0, $1, $2, $3) => {
+  914249: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -19687,71 +19701,71 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  914210: ($0, $1, $2, $3, $4) => {
+  914402: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  914275: ($0, $1) => {
+  914467: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  914329: ($0, $1, $2) => {
+  914521: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  914388: ($0, $1) => {
+  914580: ($0, $1) => {
     Module.clawRequestLevel($0, UTF8ToString($1));
   },
-  914439: $0 => Module.clawLevels[$0].status,
-  914480: $0 => Module.clawLevels[$0].progress,
-  914523: $0 => Module.clawLevels[$0].status,
-  914564: $0 => {
+  914631: $0 => Module.clawLevels[$0].status,
+  914672: $0 => Module.clawLevels[$0].progress,
+  914715: $0 => Module.clawLevels[$0].status,
+  914756: $0 => {
     delete Module.clawLevels[$0];
   },
-  914598: ($0, $1) => {
+  914790: ($0, $1) => {
     globalThis.clawAnalytics?.end($0, $1);
   },
-  914641: ($0, $1, $2, $3, $4, $5) => {
+  914833: ($0, $1, $2, $3, $4, $5) => {
     globalThis.clawAnalytics?.levelStart($0, $1, $2, $3, $4, $5);
   },
-  914707: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  914899: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.complete($0, $1, $2, $3, $4, $5, $6, $7);
   },
-  914779: ($0, $1, $2, $3, $4) => {
+  914971: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.checkpoint($0, $1, $2, $3, $4);
   },
-  914841: ($0, $1, $2, $3) => {
+  915033: ($0, $1, $2, $3) => {
     globalThis.clawAnalytics?.stateChange?.(UTF8ToString($0), $1, $2, $3);
   },
-  914916: ($0, $1, $2, $3, $4) => {
+  915108: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.cheat?.(UTF8ToString($0), $1, $2, $3, $4);
   },
-  914989: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  915181: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.treasure?.($0, $1, $2, $3, $4, $5, $6, $7 ? UTF8ToString($7) : null);
   },
-  915089: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  915281: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.enemy?.(UTF8ToString($0), $1, $2, $3, $4, $5, UTF8ToString($6), $7 ? UTF8ToString($7) : null);
   },
-  915214: ($0, $1) => {
+  915406: ($0, $1) => {
     globalThis.clawAnalytics?.progress?.($0, $1);
   },
-  915264: ($0, $1, $2) => {
+  915456: ($0, $1, $2) => {
     globalThis.clawAnalytics?.position?.($0, $1, $2);
   },
-  915318: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  915510: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.death($0, $1, $2, $3, $4, $5, UTF8ToString($6), $7 ? UTF8ToString($7) : null);
   },
-  915427: ($0, $1, $2, $3, $4) => {
+  915619: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.route?.($0, $1, $2, $3, $4);
   },
-  915482: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
-  915582: ($0, $1, $2, $3, $4, $5) => {
+  915674: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
+  915774: ($0, $1, $2, $3, $4, $5) => {
     if (!Module.clawMapPointer) return;
     const point = Module.clawMapPointer($1, $2, $3, $4, $5);
     HEAPF32[$0 >> 2] = point.x;
     HEAPF32[($0 >> 2) + 1] = point.y;
   },
-  915741: () => {
+  915933: () => {
     Module.clawPaletteShader = null;
   },
-  915776: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  915968: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     try {
       Module.clawRenderPalette($0, $1, $2, $3, $4, $5, $6, $7);
       return 1;
@@ -19761,75 +19775,76 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  915947: ($0, $1, $2) => {
+  916139: ($0, $1, $2) => {
     globalThis.clawAnalytics?.menu(UTF8ToString($0), UTF8ToString($1), $2);
   },
-  916023: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  916086: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  916149: $0 => {
+  916215: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  916278: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  916341: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  916197: () => !!(globalThis.CLAW_ANALYTICS_CONFIG?.leaderboard_api && globalThis.CLAW_ANALYTICS_CONFIG?.token),
-  916306: () => !!globalThis.clawDiscordActivity,
-  916351: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
-  916418: $0 => {
+  916389: () => !!(globalThis.CLAW_ANALYTICS_CONFIG?.leaderboard_api && globalThis.CLAW_ANALYTICS_CONFIG?.token),
+  916498: () => !!globalThis.clawDiscordActivity,
+  916543: () => !!globalThis.clawDiscordActivity?.embedded,
+  916598: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
+  916665: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  916468: $0 => {
+  916715: $0 => {
     if (Module.clawSetMenuTextInput) Module.clawSetMenuTextInput(!!$0); else Module.clawMenuTextInput = !!$0;
   },
-  916578: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status ?? -1,
-  916645: () => {
+  916825: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status ?? -1,
+  916892: () => {
     if (Module.clawFocusMenuTextInput) Module.clawFocusMenuTextInput();
   },
-  916717: () => {
+  916964: () => {
     globalThis.clawAnalytics?.showLeaderboards?.();
   },
-  916769: () => {
+  917016: () => {
     globalThis.clawAnalytics?.applicationQuit?.();
   },
-  916820: () => {
+  917067: () => {
     Module.clawQuit();
   },
-  916843: () => Module.clawTouchMode ? 1 : 0,
-  916884: $0 => {
+  917090: () => Module.clawTouchMode ? 1 : 0,
+  917131: $0 => {
     if (Module.clawCopyMenuText) Module.clawCopyMenuText(UTF8ToString($0));
   },
-  916960: () => {
+  917207: () => {
     if (Module.clawPasteMenuText) Module.clawPasteMenuText();
   },
-  917022: () => {
+  917269: () => {
     Module.clawImportSave();
   },
-  917051: () => {
+  917298: () => {
     Module.clawExportSave();
   },
-  917080: () => Module.clawTouchSettings.enabled(),
-  917127: () => Module.clawTouchSettings.style(),
-  917172: () => Module.clawTouchSettings.size(),
-  917216: () => {
+  917327: () => Module.clawTouchSettings.enabled(),
+  917374: () => Module.clawTouchSettings.style(),
+  917419: () => Module.clawTouchSettings.size(),
+  917463: () => {
     Module.clawTouchSettings.toggle();
   },
-  917255: () => {
+  917502: () => {
     Module.clawTouchSettings.cycleStyle();
   },
-  917298: () => {
+  917545: () => {
     Module.clawTouchSettings.cycleSize();
   },
-  917340: $0 => Module.clawTouchSettings.action($0),
-  917388: $0 => {
+  917587: $0 => Module.clawTouchSettings.action($0),
+  917635: $0 => {
     Module.clawTouchSettings.toggleAction($0);
   },
-  917435: () => {
+  917682: () => {
     Module.clawTouchSettings.reorganize();
   },
-  917478: () => {
+  917725: () => {
     Module.clawTouchSettings.finishReorganizing();
   },
-  917529: () => {
+  917776: () => {
     Module.clawTouchSettings.resetPositions();
   },
-  917576: ($0, $1, $2) => {
+  917823: ($0, $1, $2) => {
     const id = $0;
     const persist = !!$2;
     const input = document.createElement("input");
@@ -19875,18 +19890,18 @@ var ASM_CONSTS = {
     });
     input.click();
   },
-  919015: () => {
+  919262: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  919137: () => globalThis.clawAnalytics?.enabled() ? 1 : 0,
-  919193: () => globalThis.clawAnalytics?.canEnable() ? 1 : 0,
-  919251: () => {
+  919384: () => globalThis.clawAnalytics?.enabled() ? 1 : 0,
+  919440: () => globalThis.clawAnalytics?.canEnable() ? 1 : 0,
+  919498: () => {
     const analytics = globalThis.clawAnalytics;
     analytics?.setEnabled(!analytics.enabled());
   },
-  919344: ($0, $1) => {
+  919591: ($0, $1) => {
     try {
       const bytes = FS.readFile(UTF8ToString($0));
       const url = URL.createObjectURL(new Blob([ bytes ], {
@@ -19905,16 +19920,16 @@ var ASM_CONSTS = {
       console.error(error);
     }
   },
-  919782: () => {
+  920029: () => {
     globalThis.clawAnalytics?.quitLevel();
   },
-  919825: () => Module.clawTouchMode ? 1 : 0,
-  919866: () => {
+  920072: () => Module.clawTouchMode ? 1 : 0,
+  920113: () => {
     if (Module.clawUpdateBackgroundAudio) Module.clawUpdateBackgroundAudio();
   },
-  919944: () => Module.clawTouchActions || 0,
-  919985: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
-  920053: () => {
+  920191: () => Module.clawTouchActions || 0,
+  920232: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
+  920300: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -19930,7 +19945,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  920367: $0 => {
+  920614: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -19938,13 +19953,13 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  920582: () => {
+  920829: () => {
     Module["SDL3"].dummy_audio = {};
     Module["SDL3"].dummy_audio.timers = [];
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  920759: ($0, $1, $2, $3, $4) => {
+  921006: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -19953,14 +19968,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  920951: $0 => {
+  921198: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  921082: () => {
+  921329: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -19968,13 +19983,13 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  921229: () => {
+  921476: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     }
     return false;
   },
-  921383: () => {
+  921630: () => {
     var SDL3 = Module["SDL3"];
     if (typeof (SDL3.audio_playback) === "undefined") {
       SDL3.audio_playback = {};
@@ -19996,8 +20011,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  921962: () => Module["SDL3"].audioContext.sampleRate,
-  922013: ($0, $1, $2, $3) => {
+  922209: () => Module["SDL3"].audioContext.sampleRate,
+  922260: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -20034,7 +20049,7 @@ var ASM_CONSTS = {
       }).then(have_microphone).catch(no_microphone);
     }
   },
-  923704: ($0, $1, $2, $3) => {
+  923951: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     SDL3.audio_playback.scriptProcessorNode = SDL3.audioContext["createScriptProcessor"]($1, 0, $0);
     SDL3.audio_playback.scriptProcessorNode["onaudioprocess"] = function(e) {
@@ -20066,7 +20081,7 @@ var ASM_CONSTS = {
       SDL3.audio_playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  925020: $0 => {
+  925267: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -20100,7 +20115,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  926176: ($0, $1) => {
+  926423: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var buf = SDL3.CPtrToHeap32Index($0);
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -20114,7 +20129,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  926709: ($0, $1) => {
+  926956: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -20133,11 +20148,11 @@ var ASM_CONSTS = {
       }
     }
   },
-  927336: () => {
+  927583: () => {
     Module["SDL3"].camera = {};
   },
-  927368: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  927427: ($0, $1, $2, $3, $4) => {
+  927615: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  927674: ($0, $1, $2, $3, $4) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -20211,7 +20226,7 @@ var ASM_CONSTS = {
       outcome(device, 0, 0, 0, 0);
     });
   },
-  929733: () => {
+  929980: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -20219,7 +20234,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  929984: ($0, $1, $2) => {
+  930231: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -20232,19 +20247,19 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  930362: () => {
+  930609: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  930449: $0 => {
+  930696: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"] || !gamepad["vibrationActuator"]["effects"] || !gamepad["vibrationActuator"]["effects"]["includes"]("trigger-rumble")) {
       return false;
     }
     return true;
   },
-  930695: $0 => {
+  930942: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -20260,7 +20275,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  931160: $0 => {
+  931407: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -20276,14 +20291,14 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  931632: $0 => {
+  931879: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
     }
     return gamepad["id"]["toLowerCase"]()["indexOf"]("xinput") >= 0;
   },
-  931775: () => {
+  932022: () => {
     const os = ([ "Android", "Linux", "iPhone", "Macintosh", "Windows" ]);
     const ua = navigator["userAgent"];
     for (let i = 0; i < os.length; i++) {
@@ -20293,7 +20308,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  931985: ($0, $1, $2) => {
+  932232: ($0, $1, $2) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       stringToUTF8("\0", $1, $2);
@@ -20315,14 +20330,14 @@ var ASM_CONSTS = {
     }
     stringToUTF8(output.trim(), $1, $2);
   },
-  932663: $0 => {
+  932910: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"]) {
       return false;
     }
     return true;
   },
-  932791: ($0, $1, $2, $3, $4) => {
+  933038: ($0, $1, $2, $3, $4) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return false;
@@ -20337,7 +20352,7 @@ var ASM_CONSTS = {
     });
     return true;
   },
-  933104: ($0, $1) => {
+  933351: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -20371,7 +20386,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  933812: ($0, $1, $2, $3) => {
+  934059: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -20402,7 +20417,7 @@ var ASM_CONSTS = {
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
     return true;
   },
-  934561: () => {
+  934808: () => {
     var SDL3 = Module["SDL3"];
     SDL3["mouse_x"] = 0;
     SDL3["mouse_y"] = 0;
@@ -20428,7 +20443,7 @@ var ASM_CONSTS = {
       }
     });
   },
-  935249: ($0, $1, $2, $3, $4) => {
+  935496: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -20449,20 +20464,20 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  935907: $0 => {
+  936154: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  935990: () => {
+  936237: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  936059: () => Module["SDL3"]["mouse_x"],
-  936097: () => Module["SDL3"]["mouse_y"],
-  936135: $0 => Module["SDL3"]["mouse_buttons"][$0],
-  936183: $0 => {
+  936306: () => Module["SDL3"]["mouse_x"],
+  936344: () => Module["SDL3"]["mouse_y"],
+  936382: $0 => Module["SDL3"]["mouse_buttons"][$0],
+  936430: $0 => {
     var data = $0;
     if (document.sdlEventHandlerLockKeysCheck) {
       document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
@@ -20474,10 +20489,10 @@ var ASM_CONSTS = {
     };
     document.addEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  936737: () => {
+  936984: () => {
     document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  936821: $0 => {
+  937068: $0 => {
     var target = document;
     if (target) {
       target.sdlEventHandlerMouseButtonUpGlobal = function(event) {
@@ -20491,7 +20506,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
     }
   },
-  937182: $0 => {
+  937429: $0 => {
     var SDL3 = Module["SDL3"];
     if (SDL3.makePointerEventCStruct === undefined) {
       SDL3.makePointerEventCStruct = function(left, top, event) {
@@ -20529,7 +20544,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  938174: $0 => {
+  938421: $0 => {
     var id = UTF8ToString($0);
     try {
       var canvas = document.querySelector(id);
@@ -20539,23 +20554,23 @@ var ASM_CONSTS = {
     } catch (e) {}
     return false;
   },
-  938340: () => document.hasFocus(),
-  938372: () => {
+  938587: () => document.hasFocus(),
+  938619: () => {
     var target = document;
     if (target) {
       target.removeEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
       target.sdlEventHandlerMouseButtonUpGlobal = undefined;
     }
   },
-  938554: () => document.body.clientWidth,
-  938592: () => document.body.clientHeight,
-  938631: () => window.innerWidth,
-  938661: () => window.innerHeight,
-  938692: () => window.outerWidth,
-  938722: () => window.outerHeight,
-  938753: () => window.pageXOffset,
-  938784: () => window.pageYOffset,
-  938815: ($0, $1) => {
+  938801: () => document.body.clientWidth,
+  938839: () => document.body.clientHeight,
+  938878: () => window.innerWidth,
+  938908: () => window.innerHeight,
+  938939: () => window.outerWidth,
+  938969: () => window.outerHeight,
+  939e3: () => window.pageXOffset,
+  939031: () => window.pageYOffset,
+  939062: ($0, $1) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -20593,7 +20608,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerPointerGeneric);
     }
   },
-  940203: ($0, $1, $2) => {
+  940450: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -20673,7 +20688,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  942570: $0 => {
+  942817: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -20689,7 +20704,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  943400: $0 => {
+  943647: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       target.removeEventListener("pointerenter", target.sdlEventHandlerPointerEnter);
@@ -20704,7 +20719,7 @@ var ASM_CONSTS = {
       target.sdlEventHandlerPointerGeneric = undefined;
     }
   },
-  944134: () => {
+  944381: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -20716,7 +20731,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  944343: () => {
+  944590: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -20724,14 +20739,14 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  944596: () => window.innerWidth,
-  944626: () => window.innerHeight,
-  944657: $0 => {
+  944843: () => window.innerWidth,
+  944873: () => window.innerHeight,
+  944904: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  944766: ($0, $1) => {
+  945013: ($0, $1) => {
     var pngData = HEAPU8.buffer instanceof ArrayBuffer ? HEAPU8.subarray($0, $0 + $1) : HEAPU8.slice($0, $0 + $1);
     var blob = new Blob([ pngData ], {
       type: "image/png"
@@ -20749,12 +20764,12 @@ var ASM_CONSTS = {
     }
     link.href = url;
   },
-  945259: () => {
+  945506: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  945333: () => window.innerWidth,
-  945363: () => window.innerHeight,
-  945394: $0 => {
+  945580: () => window.innerWidth,
+  945610: () => window.innerHeight,
+  945641: $0 => {
     var canvas = document.querySelector(UTF8ToString($0));
     canvas.SDL3_original_position = canvas.style.position;
     canvas.SDL3_original_top = canvas.style.top;
@@ -20775,7 +20790,7 @@ var ASM_CONSTS = {
     canvas.style.top = "0";
     canvas.style.left = "0";
   },
-  946092: () => {
+  946339: () => {
     var div = document.getElementById("SDL3_fill_document_background_elements");
     if (div) {
       if (div.SDL3_canvas_nextsib) {
@@ -20792,7 +20807,7 @@ var ASM_CONSTS = {
       div.remove();
     }
   },
-  946651: () => {
+  946898: () => {
     if (window.matchMedia) {
       var SDL3 = Module["SDL3"];
       SDL3.eventHandlerThemeChanged = function(event) {
@@ -20802,7 +20817,7 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  946973: ($0, $1, $2, $3, $4) => {
+  947220: ($0, $1, $2, $3, $4) => {
     var title = UTF8ToString($0);
     var message = UTF8ToString($1);
     var background = UTF8ToString($2);
@@ -20822,7 +20837,7 @@ var ASM_CONSTS = {
     dialog.append(p);
     dialog.showModal();
   },
-  947514: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  947761: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     var dialog_id = UTF8ToString($0);
     var text = UTF8ToString($1);
     var responseId = $2;
@@ -20863,7 +20878,7 @@ var ASM_CONSTS = {
     dialog.append(button);
     return true;
   },
-  948523: $0 => {
+  948770: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -20871,7 +20886,7 @@ var ASM_CONSTS = {
     }
     return dialog.open;
   },
-  948661: $0 => {
+  948908: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -20883,17 +20898,17 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  948843: ($0, $1) => {
+  949090: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  948900: $0 => {
+  949147: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  948940: () => {
+  949187: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  949057: $0 => {
+  949304: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;

@@ -59,18 +59,40 @@ html.claw-rotated .touch-actions{right:max(16px,env(safe-area-inset-right))}
 #touch-controls .touch-keyboard{position:absolute;top:max(16px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));pointer-events:auto;font-size:26px}
 #touch-controls .touch-menu button{font-size:26px}
 .touch-text-input{position:absolute;top:0;left:50%;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none;font-size:16px}
-#leaderboard-dialog{box-sizing:border-box;width:min(760px,calc(100vw - 28px));max-height:85dvh;margin:auto;padding:20px;border:2px solid #d09535;border-radius:12px;background:#10151d;color:#eee;text-align:left;font:16px system-ui}
-#leaderboard-dialog::backdrop{background:#000b}
+#leaderboard-dialog{box-sizing:border-box;width:min(1440px,calc(100vw - 28px));height:min(920px,calc(100dvh - 28px));max-width:none;max-height:none;margin:auto;padding:clamp(16px,2.4vw,32px);border:1px solid #b88943;border-radius:16px;background:linear-gradient(145deg,#172333,#0b111a 72%);color:#eee;text-align:left;font:16px system-ui;overflow:hidden}
+#leaderboard-dialog::backdrop{background:#000d;backdrop-filter:blur(4px)}
+#leaderboard-layout{height:100%;display:flex;flex-direction:column;min-height:0}
 #leaderboard-header{display:flex;align-items:center;justify-content:space-between;gap:12px}
-#leaderboard-title{margin:0;color:#ffe1a3}
-#leaderboard-close{width:42px;height:42px;border:1px solid #ffffff80;border-radius:8px;background:#172536;color:white;font-size:24px}
-#leaderboard-level-label{display:block;margin:12px 0 4px}
-#leaderboard-level{max-width:100%;padding:8px;background:#172536;color:#fff}
-#leaderboard-status{min-height:1.5em}
-#leaderboard-entries{max-height:55dvh;overflow:auto;padding-left:28px}
-#leaderboard-entries li{margin:10px 0;padding:10px;border:1px solid #ffffff30;border-radius:8px}
-#leaderboard-entries li span,#leaderboard-entries li small{display:block;margin-top:5px}
-#leaderboard-entries li small{color:#ddd}
+#leaderboard-title{margin:0;color:#ffe1a3;font-size:clamp(24px,3vw,38px);letter-spacing:.04em}
+#leaderboard-close{width:44px;height:44px;border:1px solid #ffffff50;border-radius:10px;background:#172536;color:white;font-size:24px;cursor:pointer}
+#leaderboard-filters{display:flex;align-items:end;justify-content:flex-start;flex-wrap:wrap;gap:12px;margin:22px 0 16px}
+#leaderboard-filters label{display:grid;gap:6px;color:#aab8c7;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+#leaderboard-filters select{min-width:150px;padding:10px 36px 10px 12px;border:1px solid #526274;border-radius:8px;background:#1a293a;color:#fff;font:600 14px system-ui}
+#leaderboard-level-label[hidden],#leaderboard-level[hidden]{display:none}
+#leaderboard-status{min-height:1.4em;margin:0 0 10px;color:#e3c88e}
+#leaderboard-dialog[data-state="empty"] #leaderboard-columns,#leaderboard-dialog[data-state="error"] #leaderboard-columns,#leaderboard-dialog[data-state="empty"] #leaderboard-entries,#leaderboard-dialog[data-state="error"] #leaderboard-entries{display:none}
+#leaderboard-dialog[data-state="empty"] #leaderboard-status,#leaderboard-dialog[data-state="error"] #leaderboard-status{display:grid;flex:1;place-items:center;margin:16px 4px;border:1px solid #ffffff18;border-radius:12px;background:#ffffff06;font-size:clamp(18px,2.4vw,25px);text-align:center}
+#leaderboard-columns,#leaderboard-entries li{display:grid;grid-template-columns:44px minmax(130px,1.6fr) minmax(100px,.8fr) minmax(100px,.8fr);column-gap:16px;align-items:center}
+#leaderboard-columns{padding:10px 18px;color:#9eafbf;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+#leaderboard-columns .active{color:#f2d394}
+#leaderboard-entries{flex:1;min-height:0;overflow:auto;margin:0;padding:0 4px 4px;list-style:none;scrollbar-color:#82663b #111a24}
+#leaderboard-entries li{position:relative;min-height:70px;margin:0 0 8px;padding:12px 18px;border:1px solid #ffffff12;border-radius:10px;background:#ffffff08}
+#leaderboard-entries li:nth-child(even){background:#ffffff04}
+.leaderboard-rank{color:#e6c27b;font-weight:700}
+.leaderboard-player{overflow:hidden;color:#f5f2ea;text-overflow:ellipsis;white-space:nowrap}
+.leaderboard-score,.leaderboard-time{font-variant-numeric:tabular-nums}
+.leaderboard-secondary{grid-column:2/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:7px;color:#aab7c4;font-size:12px;line-height:1.5}
+.leaderboard-details{flex:none;color:#d4bd90;font-size:12px}
+.leaderboard-details summary{width:max-content;cursor:pointer}
+.leaderboard-details small{display:block;margin-top:6px;color:#aab7c4;line-height:1.6}
+.leaderboard-skeleton{min-height:32px!important;margin-bottom:5px!important;padding:7px 18px!important;overflow:hidden}
+.leaderboard-skeleton-block{height:12px;border-radius:5px;background:linear-gradient(90deg,#263546 20%,#3b4a5a 38%,#263546 58%);background-size:220% 100%;animation:leaderboard-shimmer 1.25s linear infinite}
+.leaderboard-skeleton-block.rank{width:20px}
+.leaderboard-skeleton-block.player{width:min(65%,280px)}
+.leaderboard-skeleton-block.metric{width:72px}
+.leaderboard-skeleton-block.secondary{grid-column:2/-1;width:min(80%,520px);height:8px;margin-top:0}
+@keyframes leaderboard-shimmer{to{background-position-x:-220%}}
+@media(max-width:620px){#leaderboard-dialog{width:calc(100vw - 12px);height:calc(100dvh - 12px);padding:14px;border-radius:12px}#leaderboard-filters{gap:8px;margin:14px 0 10px}#leaderboard-filters label{flex:1;min-width:100px}#leaderboard-filters select{box-sizing:border-box;min-width:0;width:100%;padding:9px 5px;font-size:12px}#leaderboard-columns,#leaderboard-entries li{grid-template-columns:28px minmax(70px,1.2fr) minmax(64px,.8fr) minmax(64px,.8fr);column-gap:8px}#leaderboard-columns{padding:8px 10px;font-size:10px}#leaderboard-entries li{padding:10px;min-height:64px;font-size:13px}.leaderboard-secondary,.leaderboard-details{font-size:10px}.leaderboard-secondary{align-items:flex-start;flex-wrap:wrap}}
 #loading-error[hidden]{display:none}
 #loading-error{position:fixed;z-index:20;left:4vw;top:6vh;width:min(78vw,760px);max-height:82vh;box-sizing:border-box;padding:18px;border:1px solid #aaa;background:#000;color:#fff;text-align:left;font:16px Arial,sans-serif}
 #loading-error-title{margin:0 0 10px;font: bold 20px Arial,sans-serif}
@@ -89,11 +111,20 @@ html.claw-rotated .touch-actions{right:max(16px,env(safe-area-inset-right))}
 </section>
 </div>
 <dialog id="leaderboard-dialog" aria-labelledby="leaderboard-title">
+<div id="leaderboard-layout">
 <div id="leaderboard-header"><h2 id="leaderboard-title"></h2><button id="leaderboard-close" type="button" aria-label="Close">×</button></div>
+<div id="leaderboard-filters">
+<label id="leaderboard-scope-label" for="leaderboard-scope"></label>
+<select id="leaderboard-scope" aria-label="Leaderboard scope"></select>
+<label id="leaderboard-metric-label" for="leaderboard-metric"></label>
+<select id="leaderboard-metric" aria-label="Leaderboard metric"></select>
 <label id="leaderboard-level-label" for="leaderboard-level"></label>
 <select id="leaderboard-level" aria-label="Level"></select>
+</div>
 <p id="leaderboard-status" aria-live="polite"></p>
-<ol id="leaderboard-entries"></ol>
+<div id="leaderboard-columns" aria-hidden="true"><span>#</span><span id="leaderboard-player-heading"></span><span id="leaderboard-score-heading"></span><span id="leaderboard-time-heading"></span></div>
+<ol id="leaderboard-entries" aria-live="polite" aria-busy="false"></ol>
+</div>
 </dialog>
 <script src="claw-config.js"></script>
 <script>(() => {
@@ -201,7 +232,7 @@ globalThis.CLAW_ANALYTICS_CONFIG = {
   "path_prefix" : "/Claw2/",
   "token" : "phc_u9Z37RpbZc5hg35L3NUHMFg9ZhGocaAm2YrExaTPjC7h"
 };
-globalThis.CLAW_WEB_BUILD_ID = '20261111T092147Z';
+globalThis.CLAW_WEB_BUILD_ID = '20261112T013227Z';
 // Explicit events only. Analytics must never hold up or fail the game.
 (function (root) {
     'use strict';
@@ -210,27 +241,48 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T092147Z';
     const errors = [], seenErrors = new Set();
     const treasureTypes = ['coin', 'gold_bar', 'ring', 'necklace', 'cross', 'scepter', 'gecko', 'chalice', 'crown', 'skull'];
     const leaderboardText = {
-        en: {title:'LEADERBOARDS',close:'Close',level:'Level',loading:'Loading…',empty:'No scores yet.',
-            error:'Unable to load leaderboards.',score:'Score',treasure:'Treasures',
-            types:['Coin','Gold bar','Ring','Necklace','Cross','Scepter','Gecko','Chalice','Crown','Skull'],anonymous:'Anonymous'},
-        pt: {title:'CLASSIFICAÇÃO',close:'Fechar',level:'Nível',loading:'Carregando…',empty:'Ainda não há pontuações.',
-            error:'Não foi possível carregar as classificações.',score:'Pontuação',treasure:'Tesouros',
-            types:['Moeda','Barra de ouro','Anel','Colar','Cruz','Cetro','Lagartixa','Cálice','Coroa','Caveira'],anonymous:'Anônimo'},
-        de: {title:'BESTENLISTEN',close:'Schließen',level:'Level',loading:'Wird geladen…',empty:'Noch keine Ergebnisse.',
-            error:'Bestenlisten konnten nicht geladen werden.',score:'Punkte',treasure:'Schätze',
-            types:['Münze','Goldbarren','Ring','Halskette','Kreuz','Zepter','Gecko','Kelch','Krone','Schädel'],anonymous:'Anonym'},
-        es: {title:'CLASIFICACIÓN',close:'Cerrar',level:'Nivel',loading:'Cargando…',empty:'Aún no hay puntuaciones.',
-            error:'No se pudo cargar la clasificación.',score:'Puntuación',treasure:'Tesoros',
-            types:['Moneda','Lingote de oro','Anillo','Collar','Cruz','Cetro','Gecko','Cáliz','Corona','Cráneo'],anonymous:'Anónimo'},
-        ja: {title:'ランキング',close:'閉じる',level:'レベル',loading:'読み込み中…',empty:'スコアはまだありません。',
-            error:'ランキングを読み込めませんでした。',score:'スコア',treasure:'お宝',
-            types:['コイン','金塊','指輪','ネックレス','十字架','笏','ヤモリ','聖杯','王冠','頭蓋骨'],anonymous:'匿名'},
-        pl: {title:'RANKINGI',close:'Zamknij',level:'Poziom',loading:'Wczytywanie…',empty:'Brak wyników.',
-            error:'Nie udało się wczytać rankingów.',score:'Wynik',treasure:'Skarby',
-            types:['Moneta','Sztabka złota','Pierścień','Naszyjnik','Krzyż','Berło','Gekon','Kielich','Korona','Czaszka'],anonymous:'Anonim'},
-        ru: {title:'ТАБЛИЦА РЕКОРДОВ',close:'Закрыть',level:'Уровень',loading:'Загрузка…',empty:'Результатов пока нет.',
-            error:'Не удалось загрузить таблицу рекордов.',score:'Счёт',treasure:'Сокровища',
-            types:['Монета','Золотой слиток','Кольцо','Ожерелье','Крест','Скипетр','Геккон','Кубок','Корона','Череп'],anonymous:'Аноним'}
+        en: {title:'LEADERBOARDS',close:'Close',scope:'Scope',player:'Player',gameTotal:'GAME TOTAL',levelTotal:'LEVEL TOTAL',
+            metric:'Sort by',speed:'SPEED',level:'Level',loading:'Loading…',
+            empty:'No connected players have results for these filters yet.',
+            error:'Unable to load leaderboards.',cached:'Showing saved results while refreshing.',
+            score:'Score',time:'Time',lives:'Lives',ammo:'Ammo',magic:'Magic',dynamite:'Dynamite',treasure:'Treasures',
+            types:['Coin','Gold bar','Ring','Necklace','Cross','Scepter','Gecko','Chalice','Crown','Skull'],unavailable:'—'},
+        pt: {title:'CLASSIFICAÇÃO',close:'Fechar',scope:'Categoria',player:'Jogador',gameTotal:'TOTAL DO JOGO',levelTotal:'TOTAL DO NÍVEL',
+            metric:'Ordenar por',speed:'TEMPO',level:'Nível',loading:'Carregando…',
+            empty:'Ainda não há resultados de jogadores conectados para estes filtros.',
+            error:'Não foi possível carregar as classificações.',cached:'Exibindo resultados salvos enquanto atualizamos.',
+            score:'Pontuação',time:'Tempo',lives:'Vidas',ammo:'Munição',magic:'Magia',dynamite:'Dinamite',treasure:'Tesouros',
+            types:['Moeda','Barra de ouro','Anel','Colar','Cruz','Cetro','Lagartixa','Cálice','Coroa','Caveira'],unavailable:'—'},
+        de: {title:'BESTENLISTEN',close:'Schließen',scope:'Umfang',player:'Spieler',gameTotal:'GESAMTSPIEL',levelTotal:'LEVEL GESAMT',
+            metric:'Sortieren nach',speed:'ZEIT',level:'Level',loading:'Wird geladen…',
+            empty:'Für diese Filter gibt es noch keine Ergebnisse verbundener Spieler.',
+            error:'Bestenlisten konnten nicht geladen werden.',cached:'Gespeicherte Ergebnisse werden aktualisiert.',
+            score:'Punkte',time:'Zeit',lives:'Leben',ammo:'Munition',magic:'Magie',dynamite:'Dynamit',treasure:'Schätze',
+            types:['Münze','Goldbarren','Ring','Halskette','Kreuz','Zepter','Gecko','Kelch','Krone','Schädel'],unavailable:'—'},
+        es: {title:'CLASIFICACIÓN',close:'Cerrar',scope:'Ámbito',player:'Jugador',gameTotal:'TOTAL DEL JUEGO',levelTotal:'TOTAL DEL NIVEL',
+            metric:'Ordenar por',speed:'TIEMPO',level:'Nivel',loading:'Cargando…',
+            empty:'Aún no hay resultados de jugadores conectados con estos filtros.',
+            error:'No se pudo cargar la clasificación.',cached:'Mostrando resultados guardados mientras se actualizan.',
+            score:'Puntuación',time:'Tiempo',lives:'Vidas',ammo:'Munición',magic:'Magia',dynamite:'Dinamita',treasure:'Tesoros',
+            types:['Moneda','Lingote de oro','Anillo','Collar','Cruz','Cetro','Gecko','Cáliz','Corona','Cráneo'],unavailable:'—'},
+        ja: {title:'ランキング',close:'閉じる',scope:'ランキング範囲',player:'プレイヤー',gameTotal:'ゲーム合計',levelTotal:'レベル合計',
+            metric:'並べ替え',speed:'タイム',level:'レベル',loading:'読み込み中…',
+            empty:'選択した条件に該当する接続済みプレイヤーの記録はありません。',
+            error:'ランキングを読み込めませんでした。',cached:'保存済みデータを表示しながら更新しています。',
+            score:'スコア',time:'タイム',lives:'残機',ammo:'弾薬',magic:'魔法',dynamite:'ダイナマイト',treasure:'お宝',
+            types:['コイン','金塊','指輪','ネックレス','十字架','笏','ヤモリ','聖杯','王冠','頭蓋骨'],unavailable:'—'},
+        pl: {title:'RANKINGI',close:'Zamknij',scope:'Zakres',player:'Gracz',gameTotal:'WYNIK CAŁEJ GRY',levelTotal:'WYNIK POZIOMU',
+            metric:'Sortuj według',speed:'CZAS',level:'Poziom',loading:'Wczytywanie…',
+            empty:'Brak wyników zalogowanych graczy dla wybranych filtrów.',
+            error:'Nie udało się wczytać rankingów.',cached:'Wyświetlam zapisane wyniki podczas aktualizacji.',
+            score:'Wynik',time:'Czas',lives:'Życia',ammo:'Amunicja',magic:'Magia',dynamite:'Dynamit',treasure:'Skarby',
+            types:['Moneta','Sztabka złota','Pierścień','Naszyjnik','Krzyż','Berło','Gekon','Kielich','Korona','Czaszka'],unavailable:'—'},
+        ru: {title:'ТАБЛИЦА РЕКОРДОВ',close:'Закрыть',scope:'Режим',player:'Игрок',gameTotal:'ИТОГ ИГРЫ',levelTotal:'ИТОГ УРОВНЯ',
+            metric:'Сортировка',speed:'ВРЕМЯ',level:'Уровень',loading:'Загрузка…',
+            empty:'Для выбранных фильтров пока нет результатов подключённых игроков.',
+            error:'Не удалось загрузить таблицу рекордов.',cached:'Показаны сохранённые результаты; идёт обновление.',
+            score:'Счёт',time:'Время',lives:'Жизни',ammo:'Патроны',magic:'Магия',dynamite:'Динамит',treasure:'Сокровища',
+            types:['Монета','Золотой слиток','Кольцо','Ожерелье','Крест','Скипетр','Геккон','Кубок','Корона','Череп'],unavailable:'—'}
     };
     let sdk = null, stopped = false, run = null, level = null;
     let lastGameplay = null, lastPosition = null, closeReported = false;
@@ -238,14 +290,18 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T092147Z';
     let levelTreasureCounts = Array(treasureTypes.length).fill(0);
     let leaderboardRequest = 0;
     const routeSamples = new Map();
-    let discordId = null, identifiedId = null;
+    let discordId = null, discordUsername = null, identifiedId = null, identifiedUsername = null;
     function syncIdentity() {
         if (!sdk || stopped || comparison() || !allowed()) return;
         const id = discordId ? 'discord:' + discordId : null;
-        if (id === identifiedId) return;
-        if (identifiedId) sdk.reset();
-        if (id) sdk.identify(id, {discord_id: discordId});
+        if (id === identifiedId && discordUsername === identifiedUsername) return;
+        if (identifiedId && id !== identifiedId) sdk.reset();
+        if (id) sdk.identify(id, {
+            discord_id: discordId,
+            ...(discordUsername ? {discord_nickname: discordUsername, discord_username: discordUsername} : {}),
+        });
         identifiedId = id;
+        identifiedUsername = discordUsername;
     }
     try { userOptOut = localStorage.getItem('claw.analytics.opt_out') === '1'; } catch (_) {}
     const allowed = () => {
@@ -266,19 +322,36 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T092147Z';
     function showLeaderboards() {
         const dialog = document.getElementById?.('leaderboard-dialog');
         const select = document.getElementById?.('leaderboard-level');
+        const scopeSelect = document.getElementById?.('leaderboard-scope');
+        const metricSelect = document.getElementById?.('leaderboard-metric');
         const title = document.getElementById?.('leaderboard-title');
         const close = document.getElementById?.('leaderboard-close');
+        const scopeLabel = document.getElementById?.('leaderboard-scope-label');
+        const metricLabel = document.getElementById?.('leaderboard-metric-label');
         const levelLabel = document.getElementById?.('leaderboard-level-label');
         const status = document.getElementById?.('leaderboard-status');
         const entries = document.getElementById?.('leaderboard-entries');
-        if (!dialog || !select || !title || !close || !levelLabel || !status || !entries
+        const playerHeading = document.getElementById?.('leaderboard-player-heading');
+        const scoreHeading = document.getElementById?.('leaderboard-score-heading');
+        const timeHeading = document.getElementById?.('leaderboard-time-heading');
+        if (!dialog || !select || !scopeSelect || !metricSelect || !title || !close
+            || !scopeLabel || !metricLabel || !levelLabel || !status || !entries
+            || !playerHeading || !scoreHeading || !timeHeading
             || !config.leaderboard_api || !config.token) return;
         const language = (navigator.language || 'en').toLowerCase().split('-')[0];
         const text = leaderboardText[language] || leaderboardText.en;
         title.textContent = text.title;
         close.textContent = '×';
         close.setAttribute('aria-label', text.close);
+        scopeLabel.textContent = text.scope;
+        metricLabel.textContent = text.metric;
         levelLabel.textContent = text.level;
+        playerHeading.textContent = text.player;
+        scoreHeading.textContent = text.score;
+        timeHeading.textContent = text.time;
+        scopeSelect.setAttribute('aria-label', text.scope);
+        metricSelect.setAttribute('aria-label', text.metric);
+        select.setAttribute('aria-label', text.level);
         if (!select.options.length) {
             for (let number = 1; number <= 14; number++) {
                 const option = document.createElement('option');
@@ -287,39 +360,106 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T092147Z';
                 select.append(option);
             }
         }
+        if (!scopeSelect.options.length) {
+            scopeSelect.add(new Option(text.gameTotal, 'game'));
+            scopeSelect.add(new Option(text.levelTotal, 'level'));
+            scopeSelect.value = 'level';
+        }
+        if (!metricSelect.options.length) {
+            metricSelect.add(new Option(text.speed, 'speed'));
+            metricSelect.add(new Option(text.score, 'score'));
+            metricSelect.value = 'score';
+        }
         const load = async () => {
             const currentRequest = ++leaderboardRequest;
+            dialog.dataset.state = 'loading';
             status.textContent = text.loading;
+            entries.setAttribute('aria-busy', 'true');
             entries.replaceChildren();
+            for (let index = 0; index < 8; index++) {
+                const row = document.createElement('li');
+                row.className = 'leaderboard-skeleton';
+                for (const kind of ['rank', 'player', 'metric', 'metric', 'secondary']) {
+                    const block = document.createElement('div');
+                    block.className = `leaderboard-skeleton-block ${kind}`;
+                    row.append(block);
+                }
+                entries.append(row);
+            }
+            const scope = scopeSelect.value;
+            const metric = metricSelect.value;
+            scoreHeading.setAttribute('class', metric === 'score' ? 'active' : '');
+            timeHeading.setAttribute('class', metric === 'speed' ? 'active' : '');
+            select.hidden = scope !== 'level';
+            levelLabel.hidden = scope !== 'level';
             try {
-                const endpoint = new URL(`/api/leaderboards/${select.value}`, config.leaderboard_api);
+                const endpoint = new URL('/api/leaderboards', config.leaderboard_api);
+                endpoint.searchParams.set('scope', scope);
+                endpoint.searchParams.set('metric', metric);
+                if (scope === 'level') endpoint.searchParams.set('level', select.value);
                 const response = await fetch(endpoint, {cache: 'no-store', credentials: 'omit',
                     headers: {Accept: 'application/json'}});
                 if (!response.ok) throw new Error('Leaderboard request failed');
                 const data = await response.json();
-                if (!Array.isArray(data.entries)) throw new Error('Invalid leaderboard response');
+                if (!Array.isArray(data.entries) || data.scope !== scope || data.metric !== metric
+                    || data.entries.some(entry => typeof entry.username !== 'string'))
+                    throw new Error('Invalid leaderboard response');
                 if (currentRequest !== leaderboardRequest || !dialog.open) return;
-                status.textContent = data.entries.length ? '' : text.empty;
+                const stale = data.stale === true || Number(response.headers?.get?.('Age') || 0) >= 60;
+                status.textContent = data.entries.length ? (stale ? text.cached : '') : text.empty;
+                dialog.dataset.state = data.entries.length ? 'results' : 'empty';
+                entries.setAttribute('aria-busy', 'false');
+                entries.replaceChildren();
                 for (const entry of data.entries) {
                     const item = document.createElement('li');
+                    item.className = 'leaderboard-entry';
+                    const rank = document.createElement('span');
+                    rank.className = 'leaderboard-rank';
+                    rank.textContent = String(entries.children.length + 1).padStart(2, '0');
                     const identity = document.createElement('strong');
-                    identity.textContent = `${text.anonymous} #${String(entry.player || '').slice(0, 12)}`;
+                    identity.className = 'leaderboard-player';
+                    identity.textContent = entry.username;
                     const score = document.createElement('span');
-                    score.textContent = `${text.score}: ${Number(entry.score).toLocaleString()}`;
+                    score.className = 'leaderboard-score';
+                    score.textContent = Number(entry.score).toLocaleString();
+                    const time = document.createElement('span');
+                    time.className = 'leaderboard-time';
+                    const seconds = Math.max(0, Number(entry.timeSeconds) || 0);
+                    time.textContent = `${Math.floor(seconds / 60)}:${(seconds % 60).toFixed(2).padStart(5, '0')}`;
+                    const resources = document.createElement('div');
+                    resources.className = 'leaderboard-secondary';
+                    const resource = value => Number.isSafeInteger(value) && value >= 0 ? value : text.unavailable;
+                    resources.textContent = `${text.lives}: ${resource(entry.livesRemaining)} · ` +
+                        `${text.ammo}: ${resource(entry.ammoRemaining)} · ` +
+                        `${text.magic}: ${resource(entry.magicRemaining)} · ` +
+                        `${text.dynamite}: ${resource(entry.dynamiteRemaining)}`;
+                    const details = document.createElement('details');
+                    details.className = 'leaderboard-details';
+                    const summary = document.createElement('summary');
+                    summary.textContent = text.treasure;
                     const counts = document.createElement('small');
                     const values = entry.treasureCounts && typeof entry.treasureCounts === 'object'
                         ? entry.treasureCounts : {};
-                    counts.textContent = `${text.treasure}: ${text.types.map((name, index) =>
-                        `${name} ${Math.max(0, Number(values[treasureTypes[index]]) || 0)}`).join(' · ')}`;
-                    item.append(identity, score, counts);
+                    counts.textContent = text.types.map((name, index) =>
+                        `${name} ${Math.max(0, Number(values[treasureTypes[index]]) || 0)}`).join(' · ');
+                    details.append(summary, counts);
+                    resources.append(details);
+                    item.append(rank, identity, score, time, resources);
                     entries.append(item);
                 }
             } catch (_) {
-                if (currentRequest === leaderboardRequest && dialog.open) status.textContent = text.error;
+                if (currentRequest === leaderboardRequest && dialog.open) {
+                    dialog.dataset.state = 'error';
+                    status.textContent = text.error;
+                    entries.setAttribute('aria-busy', 'false');
+                    entries.replaceChildren();
+                }
             }
         };
         if (!dialog.dataset.leaderboardBound) {
-            select.addEventListener('change', () => load());
+            select.addEventListener('change', load);
+            scopeSelect.addEventListener('change', load);
+            metricSelect.addEventListener('change', load);
             close.addEventListener('click', () => dialog.close());
             dialog.addEventListener('close', () => { leaderboardRequest++; });
             dialog.dataset.leaderboardBound = '1';
@@ -334,7 +474,7 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T092147Z';
     const scrubErrorText = value => String(value).slice(0, 12000)
         .replace(/https?:\/\/[^\s)]+/g, value => cleanURL(value))
         .replace(/\b(?:phc_|phx_)[A-Za-z0-9]+\b/g, '[redacted]');
-    function captureError(error, phase) {
+    function captureError(error, phase, context) {
         if (stopped || comparison() || seenErrors.size >= 20) return;
         const message = scrubErrorText(typeof error === 'string' ? error : error?.message || 'Unknown game failure');
         const stack = error?.stack ? scrubErrorText(error.stack) : '';
@@ -348,6 +488,9 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T092147Z';
             level: level?.level, level_attempt_id: level?.level_attempt_id,
             asset_version: root.Module?.clawAssetVersions?.BaseAssets || 'unknown',
             is_test: new URL(location.href).searchParams.get('analytics_test') === '1'};
+        if (Number.isSafeInteger(context?.error_code)) properties.error_code = context.error_code;
+        if (Number.isSafeInteger(context?.error_resource_id)) properties.error_resource_id = context.error_resource_id;
+        if (context?.error_source === 'game_runtime') properties.error_source = context.error_source;
         if (sdk) sdk.captureException(normalized, properties);
         else errors.push([normalized, properties]);
     }
@@ -362,6 +505,7 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T092147Z';
             $current_url: cleanURL(location.href),
             run_id: run,
             is_test: new URL(location.href).searchParams.get('analytics_test') === '1',
+            ...(discordId && discordUsername ? {discord_username: discordUsername} : {}),
         };
         const captureOptions = {...options, timestamp: new Date()};
         if (sdk) sdk.capture(event, data, captureOptions);
@@ -390,8 +534,11 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T092147Z';
         }, {send_instantly: true, transport: 'sendBeacon'});
     }
     root.clawAnalytics = {
-        discordIdentity: safe(id => {
+        discordIdentity: safe((id, username) => {
             discordId = typeof id === 'string' && /^\d{5,25}$/.test(id) ? id : null;
+            discordUsername = discordId && typeof username === 'string'
+                && username.length > 0 && username.length <= 32
+                && !/[\u0000-\u001f\u007f]/.test(username) ? username : null;
             syncIdentity();
         }),
         route: safe((slot,x,y,dying,elapsedMs) => {
@@ -493,15 +640,23 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T092147Z';
         checkpoint: safe((checkpoint, x, y, elapsedMs, cheated) => {
             if (level) send('checkpoint_reached', {...levelProperties(elapsedMs, cheated), checkpoint, x, y});
         }),
-        complete: safe((elapsedMs, score, cheated) => {
+        complete: safe((elapsedMs, score, cheated, lives, ammo, magic, dynamite, health) => {
             if (!level || level.completed) return;
             progress(elapsedMs, cheated, true);
             const treasureCounts = Object.fromEntries(treasureTypes.map((type, index) =>
                 [type, levelTreasureCounts[index]]));
             const treasureProperties = Object.fromEntries(treasureTypes.map((type, index) =>
                 [`treasure_${type}`, levelTreasureCounts[index]]));
-            send('level_completed', {...levelProperties(elapsedMs, cheated), score,
-                treasure_counts: treasureCounts, ...treasureProperties});
+            const completion = {...levelProperties(elapsedMs, cheated), score,
+                finish_time_seconds: Math.max(0, elapsedMs) / 1000,
+                treasure_counts: treasureCounts, ...treasureProperties};
+            for (const [name, value] of Object.entries({
+                lives_remaining: lives, ammo_remaining: ammo, magic_remaining: magic,
+                dynamite_remaining: dynamite, health_remaining: health,
+            })) {
+                if (Number.isSafeInteger(value) && value >= 0) completion[name] = value;
+            }
+            send('level_completed', completion);
             level.completed = true;
         }),
         leaderboardsEnabled: safe(() => Boolean(config.leaderboard_api && config.token)),
@@ -592,26 +747,27 @@ globalThis.CLAW_WEB_BUILD_ID = '20261111T092147Z';
                     sdk.clear_opt_in_out_capturing();
                     const persistedId = sdk.get_distinct_id?.();
                     if (persistedId?.startsWith('discord:') && persistedId !== 'discord:' + discordId) sdk.reset();
+                    syncIdentity();
                     for (const [error, properties] of errors.splice(0)) {
                         try { sdk.captureException(error, properties); } catch (_) {}
                     }
                     for (const [name, properties, options] of queue.splice(0)) {
                         try { sdk.capture(name, properties, options); } catch (_) {}
                     }
-                    syncIdentity();
                 },
             });
         });
         document.head.appendChild(script);
         root.clawAnalytics.once('$pageview');
     } catch (_) { stopped = true; queue.length = 0; } }
-    root.clawAnalytics.discordIdentity(root.clawDiscordActivity?.userId);
+    root.clawAnalytics.discordIdentity(root.clawDiscordActivity?.userId, root.clawDiscordActivity?.username);
     initialize();
 })(globalThis);
 
 </script>
 <script>
-if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)
+    && !new URLSearchParams(location.search).has('frame_id')) {
     window.addEventListener('load', function () {
         navigator.serviceWorker.register('./service-worker.js').catch(function (error) {
             console.warn('Offline app support could not be enabled:', error);
@@ -666,13 +822,13 @@ var Module = {
     },
     clawViewport: {width: clawScreenWidth, height: clawScreenHeight},
     clawResolution: {width: clawScreenWidth, height: clawScreenHeight},
-    clawDrawAssetProgress: function (phase, detail) {
+    clawDrawAssetProgress: function (phase, detail, languageDownload = false) {
         const canvas = document.getElementById('asset-progress');
         if (canvas.width !== clawScreenWidth) canvas.width = clawScreenWidth;
         if (canvas.height !== clawScreenHeight) canvas.height = clawScreenHeight;
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (!phase) return;
+        if (!phase && !detail) return;
         const glyphs = [
             [0x7e,0x11,0x11,0x11,0x7e],[0x7f,0x49,0x49,0x49,0x36],[0x3e,0x41,0x41,0x41,0x22],
             [0x7f,0x41,0x41,0x22,0x1c],[0x7f,0x49,0x49,0x49,0x41],[0x7f,0x09,0x09,0x09,0x01],
@@ -710,8 +866,8 @@ var Module = {
                 left += 6*scale;
             }
         };
-        drawText(phase,clawScreenHeight*.5-16);
-        drawText(detail,clawScreenHeight*.5+2);
+        if (phase) drawText(phase,clawScreenHeight*.5-16);
+        if (detail) drawText(detail,clawScreenHeight*.5+(languageDownload?110:2));
     },
     setStatus: function (text) {
         Module.clawLastStatus = text;
@@ -720,7 +876,9 @@ var Module = {
         const progressElement = document.getElementById('asset-progress');
         progressElement.hidden = !progress && !ready;
         if (progress) {
-            Module.clawDrawAssetProgress(progress[1]+'...',progress[2]+' '+progress[3]);
+            const languageDownload = !!Module.clawLanguageDownloadActive;
+            Module.clawDrawAssetProgress(languageDownload ? '' : progress[1]+'...',
+                progress[2]+' '+progress[3],languageDownload);
         } else if (ready) {
             Module.clawDrawAssetProgress('READY','CLICK TO START');
         } else Module.clawDrawAssetProgress('', '');
@@ -779,11 +937,14 @@ var Module = {
                 Module.clawFail(error);
             }
     },
-    clawFail: function (error) {
-        globalThis.clawAnalytics?.error(error, Module.clawPhase || 'loading');
-        globalThis.clawAnalytics?.once('game_error', {phase: Module.clawPhase || 'loading'});
+    clawFail: function (error, errorContext) {
+        const phase = Module.clawPhase || 'loading';
+        globalThis.clawAnalytics?.error(error, phase, errorContext);
+        globalThis.clawAnalytics?.once('game_error', {phase, ...errorContext});
         Module.clawPhase = 'failed';
-        Module.clawShowError('Game error: ' + error);
+        const detail = typeof error === 'string' ? error
+            : error?.stack || error?.message || (typeof error?.code === 'number' ? 'Error code ' + error.code : 'Unknown runtime error');
+        Module.clawShowError('Game error: ' + detail + '\n' + (Module.clawRecentLogs || []).join('\n'));
         console.error(error);
     },
     clawShowError: function (error) {
@@ -810,6 +971,8 @@ var Module = {
         }, 150);
     },
     printErr: function (text) {
+        (Module.clawRecentLogs ||= []).push(String(text));
+        if (Module.clawRecentLogs.length > 30) Module.clawRecentLogs.shift();
         if (text.includes('[info]')) console.info(text);
         else if (text.includes('[warning]')) console.warn(text);
         else console.error(text);
@@ -875,6 +1038,13 @@ document.getElementById('loading-error-dismiss').addEventListener('click', () =>
 });
 window.addEventListener('error', event => Module.clawFail(event.error || event.message));
 window.addEventListener('unhandledrejection', event => Module.clawFail(event.reason));
+// Keep engine diagnostics reachable even when a stalled transition emits no error.
+window.addEventListener('keydown', event => {
+    if (event.ctrlKey && event.shiftKey && event.code === 'F8') {
+        event.preventDefault();
+        Module.clawShowError((Module.clawRecentLogs || []).join('\n') || Module.clawLastStatus || Module.clawPhase);
+    }
+});
 console.info('Claw Web', {browser:navigator.userAgent, language:navigator.language,
     cores:navigator.hardwareConcurrency, memoryGiB:navigator.deviceMemory,
     screen:[screen.width,screen.height], viewport:[innerWidth,innerHeight],
