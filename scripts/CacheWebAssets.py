@@ -91,6 +91,12 @@ def build_site(web, output, token=None, check_url=None, fetch=download):
     # from entering the published site.
     web_files = {name: (web / name).read_bytes() for name in ('Claw2.html', 'Claw2.js', 'Claw2.wasm')}
     pwa_files = {name: (web / name).read_bytes() for name in PWA_FILES}
+    activity_files = {}
+    if (web / 'activity').exists():
+        activity_files = {name: (web / 'activity' / name).read_bytes()
+                          for name in ('Claw2.html', 'Claw2.js', 'Claw2.wasm')}
+        if b'claw-config.js' not in activity_files['Claw2.html'] or b'Claw2.data' in activity_files['Claw2.js']:
+            raise ValueError('Rebuild the Activity without embedded assets before publishing')
     if b'claw-config.js' not in web_files['Claw2.html']:
         raise ValueError('Rebuild the web target: deployment configuration hook is missing')
     if b'Claw2.data' in web_files['Claw2.js']:
@@ -98,6 +104,8 @@ def build_site(web, output, token=None, check_url=None, fetch=download):
     index = {'schema': 1,
              'web': {name: sha(data) for name, data in {**web_files, **pwa_files}.items()},
              'packs': {}}
+    if activity_files:
+        index['activity'] = {name: sha(data) for name, data in activity_files.items()}
     releases = []
     for pack in PACKS:
         release = json.loads(fetch(f'https://api.github.com/repos/captainclawnet/{pack}/releases/latest', 2*1024*1024, token))
@@ -121,7 +129,7 @@ def build_site(web, output, token=None, check_url=None, fetch=download):
         except (HTTPError, URLError, TimeoutError, ValueError):
             pass
     total = sum(e['size'] for _, _, _, m in releases for e in m['files'])
-    if total + sum(map(len, web_files.values())) > 950 * 1024 * 1024:
+    if total + sum(map(len, web_files.values())) + sum(map(len, activity_files.values())) > 950 * 1024 * 1024:
         raise ValueError('Generated site is too close to the 1 GiB Pages limit')
     output.mkdir(parents=True, exist_ok=False)
     # Content-address the executable files so a cached HTML/JS never loads a
@@ -135,6 +143,22 @@ def build_site(web, output, token=None, check_url=None, fetch=download):
     (output / 'Claw2.html').write_bytes((output / 'index.html').read_bytes())
     (output / '.nojekyll').write_text('')
     (output / 'claw-config.js').write_text("globalThis.CLAW_ASSET_BASE_URL = new URL('assets/', document.baseURI).href;\n")
+    if activity_files:
+        folder = output / 'activity'
+        folder.mkdir()
+        activity_wasm = 'Claw2-' + sha(activity_files['Claw2.wasm'])[:16] + '.wasm'
+        activity_js = activity_files['Claw2.js'].replace(b'Claw2.wasm', activity_wasm.encode())
+        activity_script = 'Claw2-' + sha(activity_js)[:16] + '.js'
+        (folder / activity_wasm).write_bytes(activity_files['Claw2.wasm'])
+        (folder / activity_script).write_bytes(activity_js)
+        html = activity_files['Claw2.html'].replace(b'Claw2.js', activity_script.encode())
+        (folder / 'index.html').write_bytes(html)
+        (folder / 'Claw2.html').write_bytes(html)
+        (folder / 'claw-config.js').write_text("globalThis.CLAW_ASSET_BASE_URL = '/.proxy/assets/';\n")
+        for name, data in pwa_files.items():
+            path = folder / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
     for name, data in pwa_files.items():
         path = output / name
         path.parent.mkdir(parents=True, exist_ok=True)
