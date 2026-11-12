@@ -10153,14 +10153,14 @@ function checkIncomingModuleAPI() {
 }
 
 var ASM_CONSTS = {
-  924354: () => {
+  924370: () => {
     const token = globalThis.clawDiscordActivity?.sessionToken || "";
     const ptr = _malloc(lengthBytesUTF8(token) + 1);
     stringToUTF8(token, ptr, lengthBytesUTF8(token) + 1);
     return ptr;
   },
-  924539: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
-  924616: () => {
+  924555: () => document.hidden || Module.clawPageHidden || !document.hasFocus(),
+  924632: () => {
     const token = Module.clawComparison && Module.clawComparison.token;
     if (typeof token !== "string") return 0;
     const size = lengthBytesUTF8(token) + 1;
@@ -10168,26 +10168,26 @@ var ASM_CONSTS = {
     stringToUTF8(token, pointer, size);
     return pointer;
   },
-  924853: () => {
+  924869: () => {
     Module.clawFail(Module.clawStartupError || "Nie udało się zainicjalizować gry. Sprawdź konsolę przeglądarki.");
   },
-  924975: () => {
+  924991: () => {
     Module.clawHideCursor = function() {
       _clawHideCursor();
     };
   },
-  925038: () => {
+  925054: () => {
     Module.clawRedrawScreen = function() {
       _clawRedrawScreen();
     };
   },
-  925105: () => {
+  925121: () => {
     Module.clawResizeScreen = function() {
       _clawResizeScreen();
     };
     Module.clawResizeScreen();
   },
-  925199: () => {
+  925215: () => {
     Module.clawUpdateBackgroundAudio = function() {
       _clawUpdateBackgroundAudio();
     };
@@ -10203,36 +10203,36 @@ var ASM_CONSTS = {
       Module.clawUpdateBackgroundAudio();
     });
   },
-  925739: $0 => {
+  925755: $0 => {
     Module.setStatus("Błąd uruchomienia: " + UTF8ToString($0));
   },
-  925805: () => {
+  925821: () => {
     if (Module.clawPhase === "starting") Module.clawStarted();
   },
-  925868: ($0, $1) => {
+  925884: ($0, $1) => {
     Module.clawFail("Unable to continue game. (" + $0 + ")", {
       error_code: $0,
       error_resource_id: $1,
       error_source: "game_runtime"
     });
   },
-  926003: () => {
+  926019: () => {
     Module.clawFail(Module.clawStartupError || "Game loop stopped.");
   },
-  926073: $0 => {
+  926089: $0 => {
     Module.clawFail(UTF8ToString($0));
   },
-  926112: () => {
+  926128: () => {
     Module.clawComparisonFinished = true;
     Module.clawSync();
   },
-  926173: () => {
+  926189: () => {
     Module.clawTextShader = null;
   },
-  926207: () => {
+  926223: () => {
     Module.clawTextUniforms = {};
   },
-  926241: ($0, $1, $2, $3) => {
+  926257: ($0, $1, $2, $3) => {
     try {
       Module.clawRenderText($0, $1, $2, $3);
       return 1;
@@ -10242,25 +10242,25 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  926394: ($0, $1, $2, $3, $4) => {
+  926410: ($0, $1, $2, $3, $4) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2, $3, $4 ]);
   },
-  926459: ($0, $1) => {
+  926475: ($0, $1) => {
     Module.clawTextUniforms[UTF8ToString($0)] = [ $1 ];
   },
-  926513: ($0, $1, $2) => {
+  926529: ($0, $1, $2) => {
     Module.clawTextUniforms[UTF8ToString($0)] = ([ $1, $2 ]);
   },
-  926572: ($0, $1) => {
+  926588: ($0, $1) => {
     Module.clawRequestLevel($0, UTF8ToString($1));
   },
-  926623: $0 => Module.clawLevels[$0].status,
-  926664: $0 => Module.clawLevels[$0].progress,
-  926707: $0 => Module.clawLevels[$0].status,
-  926748: $0 => {
+  926639: $0 => Module.clawLevels[$0].status,
+  926680: $0 => Module.clawLevels[$0].progress,
+  926723: $0 => Module.clawLevels[$0].status,
+  926764: $0 => {
     delete Module.clawLevels[$0];
   },
-  926782: ($0, $1) => {
+  926798: ($0, $1) => {
     Module.clawOnlineMapHash = "";
     Module.clawSHA256(HEAPU8.slice($0, $0 + $1)).then(hash => {
       Module.clawOnlineMapHash = hash;
@@ -10268,56 +10268,56 @@ var ASM_CONSTS = {
       Module.clawOnlineMapHash = "error";
     });
   },
-  926961: ($0, $1) => {
+  926977: ($0, $1) => {
     globalThis.clawAnalytics?.end($0, $1);
   },
-  927004: ($0, $1, $2, $3, $4, $5) => {
+  927020: ($0, $1, $2, $3, $4, $5) => {
     globalThis.clawAnalytics?.levelStart($0, $1, $2, $3, $4, $5);
   },
-  927070: $0 => {
+  927086: $0 => {
     stringToUTF8(Module.clawOnlineMapHash || "", $0, 65);
   },
-  927124: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  927140: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.complete($0, $1, $2, $3, $4, $5, $6, $7);
   },
-  927196: ($0, $1, $2, $3, $4) => {
+  927212: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.checkpoint($0, $1, $2, $3, $4);
   },
-  927258: ($0, $1, $2, $3) => {
+  927274: ($0, $1, $2, $3) => {
     globalThis.clawAnalytics?.stateChange?.(UTF8ToString($0), $1, $2, $3);
   },
-  927333: ($0, $1, $2, $3, $4) => {
+  927349: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.cheat?.(UTF8ToString($0), $1, $2, $3, $4);
   },
-  927406: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  927422: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.treasure?.($0, $1, $2, $3, $4, $5, $6, $7 ? UTF8ToString($7) : null);
   },
-  927506: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  927522: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.enemy?.(UTF8ToString($0), $1, $2, $3, $4, $5, UTF8ToString($6), $7 ? UTF8ToString($7) : null);
   },
-  927631: ($0, $1) => {
+  927647: ($0, $1) => {
     globalThis.clawAnalytics?.progress?.($0, $1);
   },
-  927681: ($0, $1, $2) => {
+  927697: ($0, $1, $2) => {
     globalThis.clawAnalytics?.position?.($0, $1, $2);
   },
-  927735: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  927751: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     globalThis.clawAnalytics?.death($0, $1, $2, $3, $4, $5, UTF8ToString($6), $7 ? UTF8ToString($7) : null);
   },
-  927844: ($0, $1, $2, $3, $4) => {
+  927860: ($0, $1, $2, $3, $4) => {
     globalThis.clawAnalytics?.route?.($0, $1, $2, $3, $4);
   },
-  927899: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
-  927999: ($0, $1, $2, $3, $4, $5) => {
+  927915: () => Module.clawTouchText && Module.clawTouchText.length ? Module.clawTouchText.shift() : -1,
+  928015: ($0, $1, $2, $3, $4, $5) => {
     if (!Module.clawMapPointer) return;
     const point = Module.clawMapPointer($1, $2, $3, $4, $5);
     HEAPF32[$0 >> 2] = point.x;
     HEAPF32[($0 >> 2) + 1] = point.y;
   },
-  928158: () => {
+  928174: () => {
     Module.clawPaletteShader = null;
   },
-  928193: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  928209: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     try {
       Module.clawRenderPalette($0, $1, $2, $3, $4, $5, $6, $7);
       return 1;
@@ -10327,77 +10327,77 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  928364: ($0, $1, $2) => {
+  928380: ($0, $1, $2) => {
     globalThis.clawAnalytics?.menu(UTF8ToString($0), UTF8ToString($1), $2);
   },
-  928440: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  928503: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
-  928567: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
-  928630: $0 => {
+  928456: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  928519: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
+  928583: $0 => Module.clawLanguages[UTF8ToString($0)]?.status ?? -1,
+  928646: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  928678: () => !!(globalThis.CLAW_ANALYTICS_CONFIG?.leaderboard_api && globalThis.CLAW_ANALYTICS_CONFIG?.token),
-  928787: () => !!globalThis.clawDiscordActivity,
-  928832: () => !!globalThis.clawDiscordActivity?.embedded,
-  928887: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
-  928954: $0 => {
+  928694: () => !!(globalThis.CLAW_ANALYTICS_CONFIG?.leaderboard_api && globalThis.CLAW_ANALYTICS_CONFIG?.token),
+  928803: () => !!globalThis.clawDiscordActivity,
+  928848: () => !!globalThis.clawDiscordActivity?.embedded,
+  928903: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status === 1,
+  928970: $0 => {
     Module.clawRequestLanguage(UTF8ToString($0));
   },
-  929004: $0 => {
+  929020: $0 => {
     if (Module.clawSetMenuTextInput) Module.clawSetMenuTextInput(!!$0); else Module.clawMenuTextInput = !!$0;
   },
-  929114: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status ?? -1,
-  929181: () => {
+  929130: $0 => Module.clawLanguages?.[UTF8ToString($0)]?.status ?? -1,
+  929197: () => {
     if (Module.clawFocusMenuTextInput) Module.clawFocusMenuTextInput();
   },
-  929253: () => {
+  929269: () => {
     globalThis.clawAnalytics?.showLeaderboards?.();
   },
-  929305: () => {
+  929321: () => {
     globalThis.clawAnalytics?.applicationQuit?.();
   },
-  929356: () => {
+  929372: () => {
     Module.clawQuit();
   },
-  929379: () => Module.clawTouchMode ? 1 : 0,
-  929420: $0 => {
+  929395: () => Module.clawTouchMode ? 1 : 0,
+  929436: $0 => {
     if (Module.clawCopyMenuText) Module.clawCopyMenuText(UTF8ToString($0));
   },
-  929496: () => {
+  929512: () => {
     if (Module.clawPasteMenuText) Module.clawPasteMenuText();
   },
-  929558: () => {
+  929574: () => {
     Module.clawImportSave();
   },
-  929587: () => {
+  929603: () => {
     Module.clawExportSave();
   },
-  929616: () => Module.clawTouchSettings.enabled(),
-  929663: () => Module.clawTouchSettings.style(),
-  929708: () => Module.clawTouchSettings.size(),
-  929752: () => {
+  929632: () => Module.clawTouchSettings.enabled(),
+  929679: () => Module.clawTouchSettings.style(),
+  929724: () => Module.clawTouchSettings.size(),
+  929768: () => {
     Module.clawTouchSettings.toggle();
   },
-  929791: () => {
+  929807: () => {
     Module.clawTouchSettings.cycleStyle();
   },
-  929834: () => {
+  929850: () => {
     Module.clawTouchSettings.cycleSize();
   },
-  929876: $0 => Module.clawTouchSettings.action($0),
-  929924: $0 => {
+  929892: $0 => Module.clawTouchSettings.action($0),
+  929940: $0 => {
     Module.clawTouchSettings.toggleAction($0);
   },
-  929971: () => {
+  929987: () => {
     Module.clawTouchSettings.reorganize();
   },
-  930014: () => {
+  930030: () => {
     Module.clawTouchSettings.finishReorganizing();
   },
-  930065: () => {
+  930081: () => {
     Module.clawTouchSettings.resetPositions();
   },
-  930112: ($0, $1, $2) => {
+  930128: ($0, $1, $2) => {
     const id = $0;
     const persist = !!$2;
     const input = document.createElement("input");
@@ -10443,18 +10443,18 @@ var ASM_CONSTS = {
     });
     input.click();
   },
-  931551: () => {
+  931567: () => {
     const sdl = Module["SDL3"];
     const context = sdl && sdl.audioContext;
     return !!context && context.state !== "running";
   },
-  931673: () => globalThis.clawAnalytics?.enabled() ? 1 : 0,
-  931729: () => globalThis.clawAnalytics?.canEnable() ? 1 : 0,
-  931787: () => {
+  931689: () => globalThis.clawAnalytics?.enabled() ? 1 : 0,
+  931745: () => globalThis.clawAnalytics?.canEnable() ? 1 : 0,
+  931803: () => {
     const analytics = globalThis.clawAnalytics;
     analytics?.setEnabled(!analytics.enabled());
   },
-  931880: ($0, $1) => {
+  931896: ($0, $1) => {
     try {
       const bytes = FS.readFile(UTF8ToString($0));
       const url = URL.createObjectURL(new Blob([ bytes ], {
@@ -10473,21 +10473,21 @@ var ASM_CONSTS = {
       console.error(error);
     }
   },
-  932318: () => {
+  932334: () => {
     globalThis.clawAnalytics?.quitLevel();
   },
-  932361: () => Module.clawTouchMode ? 1 : 0,
-  932402: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
-  932466: () => {
+  932377: () => Module.clawTouchMode ? 1 : 0,
+  932418: () => globalThis.clawDiscordActivity?.quickPlayLevel || 0,
+  932482: () => {
     globalThis.clawDiscordActivity.takeQuickPlayLevel();
   },
-  932523: () => globalThis.clawDiscordActivity?.takeQuickPlayLevel?.() || 0,
-  932595: () => {
+  932539: () => globalThis.clawDiscordActivity?.takeQuickPlayLevel?.() || 0,
+  932611: () => {
     if (Module.clawUpdateBackgroundAudio) Module.clawUpdateBackgroundAudio();
   },
-  932673: () => Module.clawTouchActions || 0,
-  932714: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
-  932782: () => {
+  932689: () => Module.clawTouchActions || 0,
+  932730: () => Module.clawTakeTouchKey ? Module.clawTakeTouchKey() : 0,
+  932798: () => {
     if (typeof (Module["SDL3"]) === "undefined") {
       Module["SDL3"] = {};
     }
@@ -10503,7 +10503,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  933096: $0 => {
+  933112: $0 => {
     var str = UTF8ToString($0) + "\n\n" + "Abort/Retry/Ignore/AlwaysIgnore? [ariA] :";
     var reply = window.prompt(str, "i");
     if (reply === null) {
@@ -10511,13 +10511,13 @@ var ASM_CONSTS = {
     }
     return reply.length === 1 ? reply.charCodeAt(0) : -1;
   },
-  933311: () => {
+  933327: () => {
     Module["SDL3"].dummy_audio = {};
     Module["SDL3"].dummy_audio.timers = [];
     Module["SDL3"].dummy_audio.timers[0] = undefined;
     Module["SDL3"].dummy_audio.timers[1] = undefined;
   },
-  933488: ($0, $1, $2, $3, $4) => {
+  933504: ($0, $1, $2, $3, $4) => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
@@ -10526,14 +10526,14 @@ var ASM_CONSTS = {
       dynCall("vi", $3, [ $4 ]);
     }, ($1 / $2) * 1e3);
   },
-  933680: $0 => {
+  933696: $0 => {
     var a = Module["SDL3"].dummy_audio;
     if (a.timers[$0] !== undefined) {
       clearInterval(a.timers[$0]);
     }
     a.timers[$0] = undefined;
   },
-  933811: () => {
+  933827: () => {
     if (typeof (AudioContext) !== "undefined") {
       return true;
     } else if (typeof (webkitAudioContext) !== "undefined") {
@@ -10541,13 +10541,13 @@ var ASM_CONSTS = {
     }
     return false;
   },
-  933958: () => {
+  933974: () => {
     if ((typeof (navigator.mediaDevices) !== "undefined") && (typeof (navigator.mediaDevices.getUserMedia) !== "undefined")) {
       return true;
     }
     return false;
   },
-  934112: () => {
+  934128: () => {
     var SDL3 = Module["SDL3"];
     if (typeof (SDL3.audio_playback) === "undefined") {
       SDL3.audio_playback = {};
@@ -10569,8 +10569,8 @@ var ASM_CONSTS = {
     }
     return (SDL3.audioContext !== undefined);
   },
-  934691: () => Module["SDL3"].audioContext.sampleRate,
-  934742: ($0, $1, $2, $3) => {
+  934707: () => Module["SDL3"].audioContext.sampleRate,
+  934758: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var have_microphone = function(stream) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10607,7 +10607,7 @@ var ASM_CONSTS = {
       }).then(have_microphone).catch(no_microphone);
     }
   },
-  936433: ($0, $1, $2, $3) => {
+  936449: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
     var clawPlaybackGeneration = SDL3.audio_playback;
     SDL3.audio_playback.scriptProcessorNode = SDL3.audioContext["createScriptProcessor"]($1, 0, $0);
@@ -10643,7 +10643,7 @@ var ASM_CONSTS = {
       SDL3.audio_playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  937850: $0 => {
+  937866: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -10678,7 +10678,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  939069: ($0, $1) => {
+  939085: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var buf = SDL3.CPtrToHeap32Index($0);
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -10692,7 +10692,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  939602: ($0, $1) => {
+  939618: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -10711,11 +10711,11 @@ var ASM_CONSTS = {
       }
     }
   },
-  940229: () => {
+  940245: () => {
     Module["SDL3"].camera = {};
   },
-  940261: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  940320: ($0, $1, $2, $3, $4) => {
+  940277: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  940336: ($0, $1, $2, $3, $4) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -10789,7 +10789,7 @@ var ASM_CONSTS = {
       outcome(device, 0, 0, 0, 0);
     });
   },
-  942626: () => {
+  942642: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -10797,7 +10797,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  942877: ($0, $1, $2) => {
+  942893: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -10810,19 +10810,19 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  943255: () => {
+  943271: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  943342: $0 => {
+  943358: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"] || !gamepad["vibrationActuator"]["effects"] || !gamepad["vibrationActuator"]["effects"]["includes"]("trigger-rumble")) {
       return false;
     }
     return true;
   },
-  943588: $0 => {
+  943604: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10838,7 +10838,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  944053: $0 => {
+  944069: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -10854,14 +10854,14 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  944525: $0 => {
+  944541: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
     }
     return gamepad["id"]["toLowerCase"]()["indexOf"]("xinput") >= 0;
   },
-  944668: () => {
+  944684: () => {
     const os = ([ "Android", "Linux", "iPhone", "Macintosh", "Windows" ]);
     const ua = navigator["userAgent"];
     for (let i = 0; i < os.length; i++) {
@@ -10871,7 +10871,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  944878: ($0, $1, $2) => {
+  944894: ($0, $1, $2) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       stringToUTF8("\0", $1, $2);
@@ -10893,14 +10893,14 @@ var ASM_CONSTS = {
     }
     stringToUTF8(output.trim(), $1, $2);
   },
-  945556: $0 => {
+  945572: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"]) {
       return false;
     }
     return true;
   },
-  945684: ($0, $1, $2, $3, $4) => {
+  945700: ($0, $1, $2, $3, $4) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return false;
@@ -10915,7 +10915,7 @@ var ASM_CONSTS = {
     });
     return true;
   },
-  945997: ($0, $1) => {
+  946013: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -10949,7 +10949,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  946705: ($0, $1, $2, $3) => {
+  946721: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -10980,7 +10980,7 @@ var ASM_CONSTS = {
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
     return true;
   },
-  947454: () => {
+  947470: () => {
     var SDL3 = Module["SDL3"];
     SDL3["mouse_x"] = 0;
     SDL3["mouse_y"] = 0;
@@ -11006,7 +11006,7 @@ var ASM_CONSTS = {
       }
     });
   },
-  948142: ($0, $1, $2, $3, $4) => {
+  948158: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -11027,20 +11027,20 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  948800: $0 => {
+  948816: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  948883: () => {
+  948899: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  948952: () => Module["SDL3"]["mouse_x"],
-  948990: () => Module["SDL3"]["mouse_y"],
-  949028: $0 => Module["SDL3"]["mouse_buttons"][$0],
-  949076: $0 => {
+  948968: () => Module["SDL3"]["mouse_x"],
+  949006: () => Module["SDL3"]["mouse_y"],
+  949044: $0 => Module["SDL3"]["mouse_buttons"][$0],
+  949092: $0 => {
     var data = $0;
     if (document.sdlEventHandlerLockKeysCheck) {
       document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
@@ -11052,10 +11052,10 @@ var ASM_CONSTS = {
     };
     document.addEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  949630: () => {
+  949646: () => {
     document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  949714: $0 => {
+  949730: $0 => {
     var target = document;
     if (target) {
       target.sdlEventHandlerMouseButtonUpGlobal = function(event) {
@@ -11069,7 +11069,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
     }
   },
-  950075: $0 => {
+  950091: $0 => {
     var SDL3 = Module["SDL3"];
     if (SDL3.makePointerEventCStruct === undefined) {
       SDL3.makePointerEventCStruct = function(left, top, event) {
@@ -11107,7 +11107,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  951067: $0 => {
+  951083: $0 => {
     var id = UTF8ToString($0);
     try {
       var canvas = document.querySelector(id);
@@ -11117,23 +11117,23 @@ var ASM_CONSTS = {
     } catch (e) {}
     return false;
   },
-  951233: () => document.hasFocus(),
-  951265: () => {
+  951249: () => document.hasFocus(),
+  951281: () => {
     var target = document;
     if (target) {
       target.removeEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
       target.sdlEventHandlerMouseButtonUpGlobal = undefined;
     }
   },
-  951447: () => document.body.clientWidth,
-  951485: () => document.body.clientHeight,
-  951524: () => window.innerWidth,
-  951554: () => window.innerHeight,
-  951585: () => window.outerWidth,
-  951615: () => window.outerHeight,
-  951646: () => window.pageXOffset,
-  951677: () => window.pageYOffset,
-  951708: ($0, $1) => {
+  951463: () => document.body.clientWidth,
+  951501: () => document.body.clientHeight,
+  951540: () => window.innerWidth,
+  951570: () => window.innerHeight,
+  951601: () => window.outerWidth,
+  951631: () => window.outerHeight,
+  951662: () => window.pageXOffset,
+  951693: () => window.pageYOffset,
+  951724: ($0, $1) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -11171,7 +11171,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerPointerGeneric);
     }
   },
-  953096: ($0, $1, $2) => {
+  953112: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -11251,7 +11251,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  955463: $0 => {
+  955479: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -11267,7 +11267,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  956293: $0 => {
+  956309: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       target.removeEventListener("pointerenter", target.sdlEventHandlerPointerEnter);
@@ -11282,7 +11282,7 @@ var ASM_CONSTS = {
       target.sdlEventHandlerPointerGeneric = undefined;
     }
   },
-  957027: () => {
+  957043: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -11294,7 +11294,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  957236: () => {
+  957252: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -11302,14 +11302,14 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  957489: () => window.innerWidth,
-  957519: () => window.innerHeight,
-  957550: $0 => {
+  957505: () => window.innerWidth,
+  957535: () => window.innerHeight,
+  957566: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  957659: ($0, $1) => {
+  957675: ($0, $1) => {
     var pngData = HEAPU8.buffer instanceof ArrayBuffer ? HEAPU8.subarray($0, $0 + $1) : HEAPU8.slice($0, $0 + $1);
     var blob = new Blob([ pngData ], {
       type: "image/png"
@@ -11327,12 +11327,12 @@ var ASM_CONSTS = {
     }
     link.href = url;
   },
-  958152: () => {
+  958168: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  958226: () => window.innerWidth,
-  958256: () => window.innerHeight,
-  958287: $0 => {
+  958242: () => window.innerWidth,
+  958272: () => window.innerHeight,
+  958303: $0 => {
     var canvas = document.querySelector(UTF8ToString($0));
     canvas.SDL3_original_position = canvas.style.position;
     canvas.SDL3_original_top = canvas.style.top;
@@ -11353,7 +11353,7 @@ var ASM_CONSTS = {
     canvas.style.top = "0";
     canvas.style.left = "0";
   },
-  958985: () => {
+  959001: () => {
     var div = document.getElementById("SDL3_fill_document_background_elements");
     if (div) {
       if (div.SDL3_canvas_nextsib) {
@@ -11370,7 +11370,7 @@ var ASM_CONSTS = {
       div.remove();
     }
   },
-  959544: () => {
+  959560: () => {
     if (window.matchMedia) {
       var SDL3 = Module["SDL3"];
       SDL3.eventHandlerThemeChanged = function(event) {
@@ -11380,7 +11380,7 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  959866: ($0, $1, $2, $3, $4) => {
+  959882: ($0, $1, $2, $3, $4) => {
     var title = UTF8ToString($0);
     var message = UTF8ToString($1);
     var background = UTF8ToString($2);
@@ -11400,7 +11400,7 @@ var ASM_CONSTS = {
     dialog.append(p);
     dialog.showModal();
   },
-  960407: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  960423: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     var dialog_id = UTF8ToString($0);
     var text = UTF8ToString($1);
     var responseId = $2;
@@ -11441,7 +11441,7 @@ var ASM_CONSTS = {
     dialog.append(button);
     return true;
   },
-  961416: $0 => {
+  961432: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -11449,7 +11449,7 @@ var ASM_CONSTS = {
     }
     return dialog.open;
   },
-  961554: $0 => {
+  961570: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -11461,17 +11461,17 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  961736: ($0, $1) => {
+  961752: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  961793: $0 => {
+  961809: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  961833: () => {
+  961849: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  961950: $0 => {
+  961966: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
@@ -12105,6 +12105,7 @@ var wasmImports = {
   /** @export */ invoke_viiiiiiiiii,
   /** @export */ invoke_viiiiiiiiiiiii,
   /** @export */ invoke_viiiiiiiiiiiiiii,
+  /** @export */ invoke_viij,
   /** @export */ invoke_viiji,
   /** @export */ invoke_viijii,
   /** @export */ invoke_vij,
@@ -12521,6 +12522,17 @@ function invoke_iif(index, a1, a2) {
   var sp = stackSave();
   try {
     return getWasmTableEntry(index)(a1, a2);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viij(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;

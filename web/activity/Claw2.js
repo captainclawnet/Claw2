@@ -9783,7 +9783,7 @@ var ENVIRONMENT_IS_SHELL = !ENVIRONMENT_IS_WEB && !ENVIRONMENT_IS_NODE && !ENVIR
 
 // end include: D:/Projects/Claw2/build/web-activity/discord-activity/discord-activity.js
 // include: D:/Projects/Claw2/build/web-activity/claw-text-shader-source.js
-Module.clawTextShaderSource = "uniform sampler2D texture;\nuniform vec2 resolution;\nuniform vec4 fillColor;\nuniform vec4 outlineColor;\nuniform float outlineThickness;\nuniform float bevelRadius;\nuniform float bevelStrength;\nuniform float goldMaterialStrength;\nuniform float ruggedness;\nuniform float extrusionDepth;\nuniform float specularStrength;\nuniform float reliefHighlightStrength;\nuniform vec2 faceVerticalBounds;\nuniform float shadowStrength;\nuniform vec2 shadowOffset;\nuniform float shadowSoftness;\nuniform vec4 glowColor;\nuniform float glowRadius;\nuniform float glowSoftness;\nuniform float bevelSmoothing;\nuniform float faceExpansion;\nfloat hash(vec2 p) {\n    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);\n}\nfloat noise(vec2 p) {\n    vec2 c = floor(p), f = fract(p);\n    f = f * f * (3.0 - 2.0 * f);\n    return mix(mix(hash(c), hash(c + vec2(1.0, 0.0)), f.x),\n        mix(hash(c + vec2(0.0, 1.0)), hash(c + vec2(1.0)), f.x), f.y);\n}\nfloat distanceAt(vec2 p) {\n    vec2 warp = vec2(noise(p * 0.19), noise(p * 0.19 + 31.0)) - 0.5;\n    p += warp * ruggedness * 0.65;\n    float distance = (texture2D(texture, p / resolution).r * 2.0 - 1.0) * 32.0;\n    if (faceExpansion > 0.0) {\n        // Add stem weight sideways without moving cap tops or baselines.\n        vec2 gradient = vec2(\n            texture2D(texture, (p + vec2(1.0, 0.0)) / resolution).r - texture2D(texture, (p - vec2(1.0, 0.0)) / resolution).r,\n            texture2D(texture, (p + vec2(0.0, 1.0)) / resolution).r - texture2D(texture, (p - vec2(0.0, 1.0)) / resolution).r);\n        distance += faceExpansion * abs(gradient.x) / max(0.0001, length(gradient));\n    }\n    return distance;\n}\nfloat relief(vec2 p) {\n    float d = max(0.0, distanceAt(p));\n    float variation = (noise(p * 0.12 + 7.0) - 0.5) * ruggedness * 0.42;\n    return min(d, max(0.5, bevelRadius)) * (1.0 + variation);\n}\nvoid main() {\n    vec2 p = gl_TexCoord[0].xy * resolution;\n    float d = distanceAt(p);\n    float face = smoothstep(-0.6, 0.6, d + min(0.0, outlineThickness));\n    float silhouette = smoothstep(-0.6, 0.6, d + max(0.0, outlineThickness));\n    // Preserve a dark inner band before the falloff. Starting the fade at\n    // the edge made even a wider inset read as a single dark pixel.\n    if (outlineThickness < 0.0) {\n        float insetWidth = -outlineThickness;\n        face = silhouette * smoothstep(insetWidth * 0.75,\n            insetWidth * 2.0, max(0.0, d));\n    }\n    float stepSize = 0.65 + bevelSmoothing;\n    vec2 slope = vec2(relief(p + vec2(stepSize, 0.0)) - relief(p - vec2(stepSize, 0.0)),\n        relief(p + vec2(0.0, stepSize)) - relief(p - vec2(0.0, stepSize))) / (2.0 * stepSize);\n    vec3 normal = normalize(vec3(-slope * bevelStrength * 0.65, 1.0));\n    vec3 light = normalize(vec3(-0.65, -0.85, 0.8));\n    float diffuse = max(0.0, dot(normal, light));\n    float specular = pow(max(0.0, dot(normal, normalize(light + vec3(0.0, 0.0, 1.0)))), 12.0);\n    float patina = mix(0.5, noise(p * 0.085 + 13.0), min(ruggedness, 1.0));\n    vec3 base = mix(fillColor.rgb, vec3(0.83, 0.65, 0.25), goldMaterialStrength);\n    vec3 color = base * (0.38 + diffuse * 0.90) * (0.9 + 0.2 * patina);\n    // Broad variations break up the polished highlight without adding grain.\n    color += mix(vec3(1.0), vec3(1.0, 0.94, 0.72), goldMaterialStrength)\n        * specular * specularStrength * (0.36 + 0.22 * patina);\n    color = mix(base, color, clamp(bevelStrength, 0.0, 1.0));\n    // Small specular patches INSIDE the raised face, away from its silhouette.\n    // A diagonal relief normal selects upper-left corners rather than tracing edges.\n    float insetFace = smoothstep(1.3, 1.8, d);\n    float bevelPatch = 1.0 - smoothstep(2.5, 3.5, d);\n    // A wider derivative keeps tiny raster irregularities from becoming white speckles.\n    const float facetStep = 1.25;\n    vec2 facetSlope = vec2(relief(p + vec2(facetStep, 0.0)) - relief(p - vec2(facetStep, 0.0)),\n        relief(p + vec2(0.0, facetStep)) - relief(p - vec2(0.0, facetStep))) / (2.0 * facetStep);\n    float slopeLength = length(facetSlope);\n    vec2 facetDirection = facetSlope / max(slopeLength, 0.0001);\n    float cornerFacing = pow(max(0.0, dot(facetDirection, normalize(vec2(1.0, 1.0)))), 12.0);\n    float raisedFacet = smoothstep(0.15, 0.55, slopeLength);\n    // Flat serif caps also catch light at their inset upper-left corner.\n    // Nearby left/top boundaries locate that corner without lighting a whole edge.\n    float leftCorner = 1.0 - smoothstep(0.0, 1.0, distanceAt(p - vec2(3.5, 0.0)));\n    float topCorner = 1.0 - smoothstep(0.0, 1.0, distanceAt(p - vec2(0.0, 3.5)));\n    float serifFacet = leftCorner * topCorner;\n    float glint = insetFace * bevelPatch * max(cornerFacing * raisedFacet, serifFacet);\n    // These single-line gold overlays catch the strongest reflection near their cap tops.\n    float faceY = (p.y - faceVerticalBounds.x) / max(1.0, faceVerticalBounds.y);\n    float capHighlight = 1.0 - smoothstep(0.18, 0.62, faceY);\n    glint = min(1.0, glint * 1.12) * capHighlight;\n    color = mix(color, vec3(1.0, 0.99, 0.88), reliefHighlightStrength * glint);\n    float side = silhouette;\n    for (int i = 1; i <= 24; ++i) {\n        vec2 offset = vec2(0.65, 0.85) * extrusionDepth * float(i) / 24.0;\n        side = max(side, smoothstep(-0.6, 0.6, distanceAt(p - offset) + max(0.0, outlineThickness)));\n    }\n    float shadow = smoothstep(-shadowSoftness, shadowSoftness, distanceAt(p - shadowOffset\n        - vec2(0.65, 0.85) * extrusionDepth)) * 0.72 * fillColor.a;\n    float sideAlpha = max(0.0, side - silhouette) * fillColor.a;\n    float outlineAlpha = max(0.0, silhouette - face) * outlineColor.a;\n    float faceAlpha = face * fillColor.a;\n    float alpha = faceAlpha + outlineAlpha + sideAlpha;\n    vec3 rgb = color * faceAlpha + outlineColor.rgb * outlineAlpha\n        + base * vec3(0.30, 0.24, 0.18) * sideAlpha;\n    if (glowRadius > 0.0 && glowColor.a > 0.0) {\n        float outside = max(0.0, -d);\n        float glow = (1.0 - smoothstep(mix(glowRadius - 0.6, 0.0, glowSoftness), glowRadius + 0.6, outside))\n            * glowColor.a * fillColor.a;\n        float innerRim = 1.0 - smoothstep(glowRadius * 0.78, glowRadius * 0.78 + 0.6, outside);\n        vec3 haloColor = mix(glowColor.rgb * vec3(0.67, 0.48, 0.20), glowColor.rgb, innerRim);\n        rgb += haloColor * glow * (1.0 - alpha);\n        alpha += glow * (1.0 - alpha);\n    }\n    shadow *= shadowStrength;\n    rgb += vec3(0.025, 0.018, 0.01) * shadow * (1.0 - alpha);\n    alpha += shadow * (1.0 - alpha);\n    gl_FragColor = vec4(rgb, alpha);\n}\n";
+Module.clawTextShaderSource = "uniform sampler2D texture;\nuniform vec2 resolution;\nuniform vec4 fillColor;\nuniform vec4 outlineColor;\nuniform float outlineThickness;\nuniform float bevelRadius;\nuniform float bevelStrength;\nuniform float goldMaterialStrength;\nuniform float ruggedness;\nuniform float extrusionDepth;\nuniform float specularStrength;\nuniform float reliefHighlightStrength;\nuniform vec2 faceVerticalBounds;\nuniform float shadowStrength;\nuniform vec2 shadowOffset;\nuniform float shadowSoftness;\nuniform vec4 glowColor;\nuniform float glowRadius;\nuniform float glowSoftness;\nuniform float bevelSmoothing;\nuniform float faceExpansion;\nfloat hash(vec2 p) {\n    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);\n}\nfloat noise(vec2 p) {\n    vec2 c = floor(p), f = fract(p);\n    f = f * f * (3.0 - 2.0 * f);\n    return mix(mix(hash(c), hash(c + vec2(1.0, 0.0)), f.x),\n        mix(hash(c + vec2(0.0, 1.0)), hash(c + vec2(1.0)), f.x), f.y);\n}\nfloat distanceAt(vec2 p) {\n    vec2 warp = vec2(noise(p * 0.19), noise(p * 0.19 + 31.0)) - 0.5;\n    p += warp * ruggedness * 0.65;\n    float distance = (texture2D(texture, p / resolution).r * 2.0 - 1.0) * 32.0;\n    if (faceExpansion > 0.0) {\n        // Add stem weight sideways without moving cap tops or baselines.\n        vec2 gradient = vec2(\n            texture2D(texture, (p + vec2(1.0, 0.0)) / resolution).r - texture2D(texture, (p - vec2(1.0, 0.0)) / resolution).r,\n            texture2D(texture, (p + vec2(0.0, 1.0)) / resolution).r - texture2D(texture, (p - vec2(0.0, 1.0)) / resolution).r);\n        distance += faceExpansion * abs(gradient.x) / max(0.0001, length(gradient));\n    }\n    return distance;\n}\nfloat relief(vec2 p) {\n    float d = max(0.0, distanceAt(p));\n    float variation = (noise(p * 0.12 + 7.0) - 0.5) * ruggedness * 0.42;\n    return min(d, max(0.5, bevelRadius)) * (1.0 + variation);\n}\nvoid main() {\n    vec2 p = gl_TexCoord[0].xy * resolution;\n    float d = distanceAt(p);\n    float face = smoothstep(-0.6, 0.6, d + min(0.0, outlineThickness));\n    float silhouette = smoothstep(-0.6, 0.6, d + max(0.0, outlineThickness));\n    // Keep a short dark band, then a broad falloff. A small face contribution\n    // preserves thin serifs instead of turning them into solid outline.\n    if (outlineThickness < 0.0) {\n        float insetWidth = -outlineThickness;\n        float inset = 1.0 - smoothstep(insetWidth * 0.25,\n            insetWidth * 1.75, max(0.0, d));\n        face = silhouette * (1.0 - 0.82 * inset);\n    }\n    float stepSize = 0.65 + bevelSmoothing;\n    vec2 slope = vec2(relief(p + vec2(stepSize, 0.0)) - relief(p - vec2(stepSize, 0.0)),\n        relief(p + vec2(0.0, stepSize)) - relief(p - vec2(0.0, stepSize))) / (2.0 * stepSize);\n    vec3 normal = normalize(vec3(-slope * bevelStrength * 0.65, 1.0));\n    vec3 light = normalize(vec3(-0.65, -0.85, 0.8));\n    float diffuse = max(0.0, dot(normal, light));\n    float specular = pow(max(0.0, dot(normal, normalize(light + vec3(0.0, 0.0, 1.0)))), 12.0);\n    float patina = mix(0.5, noise(p * 0.085 + 13.0), min(ruggedness, 1.0));\n    vec3 base = mix(fillColor.rgb, vec3(0.83, 0.65, 0.25), goldMaterialStrength);\n    vec3 color = base * (0.38 + diffuse * 0.90) * (0.9 + 0.2 * patina);\n    // Broad variations break up the polished highlight without adding grain.\n    color += mix(vec3(1.0), vec3(1.0, 0.94, 0.72), goldMaterialStrength)\n        * specular * specularStrength * (0.36 + 0.22 * patina);\n    color = mix(base, color, clamp(bevelStrength, 0.0, 1.0));\n    // Small specular patches INSIDE the raised face, away from its silhouette.\n    // A diagonal relief normal selects upper-left corners rather than tracing edges.\n    float insetFace = smoothstep(1.3, 1.8, d);\n    float bevelPatch = 1.0 - smoothstep(2.5, 3.5, d);\n    // A wider derivative keeps tiny raster irregularities from becoming white speckles.\n    const float facetStep = 1.25;\n    vec2 facetSlope = vec2(relief(p + vec2(facetStep, 0.0)) - relief(p - vec2(facetStep, 0.0)),\n        relief(p + vec2(0.0, facetStep)) - relief(p - vec2(0.0, facetStep))) / (2.0 * facetStep);\n    float slopeLength = length(facetSlope);\n    vec2 facetDirection = facetSlope / max(slopeLength, 0.0001);\n    float cornerFacing = pow(max(0.0, dot(facetDirection, normalize(vec2(1.0, 1.0)))), 12.0);\n    float raisedFacet = smoothstep(0.15, 0.55, slopeLength);\n    // Flat serif caps also catch light at their inset upper-left corner.\n    // Nearby left/top boundaries locate that corner without lighting a whole edge.\n    float leftCorner = 1.0 - smoothstep(0.0, 1.0, distanceAt(p - vec2(3.5, 0.0)));\n    float topCorner = 1.0 - smoothstep(0.0, 1.0, distanceAt(p - vec2(0.0, 3.5)));\n    float serifFacet = leftCorner * topCorner;\n    float glint = insetFace * bevelPatch * max(cornerFacing * raisedFacet, serifFacet);\n    // These single-line gold overlays catch the strongest reflection near their cap tops.\n    float faceY = (p.y - faceVerticalBounds.x) / max(1.0, faceVerticalBounds.y);\n    float capHighlight = 1.0 - smoothstep(0.18, 0.62, faceY);\n    glint = min(1.0, glint * 1.12) * capHighlight;\n    color = mix(color, vec3(1.0, 0.99, 0.88), reliefHighlightStrength * glint);\n    float side = silhouette;\n    for (int i = 1; i <= 24; ++i) {\n        vec2 offset = vec2(0.65, 0.85) * extrusionDepth * float(i) / 24.0;\n        side = max(side, smoothstep(-0.6, 0.6, distanceAt(p - offset) + max(0.0, outlineThickness)));\n    }\n    float shadow = smoothstep(-shadowSoftness, shadowSoftness, distanceAt(p - shadowOffset\n        - vec2(0.65, 0.85) * extrusionDepth)) * 0.72 * fillColor.a;\n    float sideAlpha = max(0.0, side - silhouette) * fillColor.a;\n    float outlineAlpha = max(0.0, silhouette - face) * outlineColor.a;\n    float faceAlpha = face * fillColor.a;\n    float alpha = faceAlpha + outlineAlpha + sideAlpha;\n    vec3 rgb = color * faceAlpha + outlineColor.rgb * outlineAlpha\n        + base * vec3(0.30, 0.24, 0.18) * sideAlpha;\n    if (glowRadius > 0.0 && glowColor.a > 0.0) {\n        float outside = max(0.0, -d);\n        float glow = (1.0 - smoothstep(mix(glowRadius - 0.6, 0.0, glowSoftness), glowRadius + 0.6, outside))\n            * glowColor.a * fillColor.a;\n        float innerRim = 1.0 - smoothstep(glowRadius * 0.78, glowRadius * 0.78 + 0.6, outside);\n        vec3 haloColor = mix(glowColor.rgb * vec3(0.67, 0.48, 0.20), glowColor.rgb, innerRim);\n        rgb += haloColor * glow * (1.0 - alpha);\n        alpha += glow * (1.0 - alpha);\n    }\n    shadow *= shadowStrength;\n    rgb += vec3(0.025, 0.018, 0.01) * shadow * (1.0 - alpha);\n    alpha += shadow * (1.0 - alpha);\n    gl_FragColor = vec4(rgb, alpha);\n}\n";
 
 // end include: D:/Projects/Claw2/build/web-activity/claw-text-shader-source.js
 // include: D:/Projects/Claw2/src/platform/web/touch-controls.js
@@ -20080,9 +20080,10 @@ var ASM_CONSTS = {
   },
   933129: ($0, $1, $2, $3) => {
     var SDL3 = Module["SDL3"];
+    var clawPlaybackGeneration = SDL3.audio_playback;
     SDL3.audio_playback.scriptProcessorNode = SDL3.audioContext["createScriptProcessor"]($1, 0, $0);
     SDL3.audio_playback.scriptProcessorNode["onaudioprocess"] = function(e) {
-      if ((SDL3 === undefined) || (SDL3.audio_playback === undefined)) {
+      if (SDL3.audio_playback !== clawPlaybackGeneration) {
         return;
       }
       if (SDL3.audio_playback.silenceTimer !== undefined) {
@@ -20098,6 +20099,9 @@ var ASM_CONSTS = {
       SDL3.audio_playback.silenceBuffer = SDL3.audioContext.createBuffer($0, $1, SDL3.audioContext.sampleRate);
       SDL3.audio_playback.silenceBuffer.getChannelData(0).fill(0);
       var silence_callback = function() {
+        if (SDL3.audio_playback !== clawPlaybackGeneration) {
+          return;
+        }
         if ((typeof navigator.userActivation) !== "undefined") {
           if (navigator.userActivation.hasBeenActive) {
             SDL3.audioContext.resume();
@@ -20110,7 +20114,7 @@ var ASM_CONSTS = {
       SDL3.audio_playback.silenceTimer = setInterval(silence_callback, ($1 / SDL3.audioContext.sampleRate) * 1e3);
     }
   },
-  934445: $0 => {
+  934546: $0 => {
     var SDL3 = Module["SDL3"];
     if ($0) {
       if (SDL3.audio_recording.silenceTimer !== undefined) {
@@ -20132,6 +20136,7 @@ var ASM_CONSTS = {
       SDL3.audio_recording = undefined;
     } else {
       if (SDL3.audio_playback.scriptProcessorNode != undefined) {
+        SDL3.audio_playback.scriptProcessorNode.onaudioprocess = null;
         SDL3.audio_playback.scriptProcessorNode.disconnect();
       }
       if (SDL3.audio_playback.silenceTimer !== undefined) {
@@ -20144,7 +20149,7 @@ var ASM_CONSTS = {
       SDL3.audioContext = undefined;
     }
   },
-  935601: ($0, $1) => {
+  935765: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var buf = SDL3.CPtrToHeap32Index($0);
     var numChannels = SDL3.audio_playback.currentPlaybackBuffer["numberOfChannels"];
@@ -20158,7 +20163,7 @@ var ASM_CONSTS = {
       }
     }
   },
-  936134: ($0, $1) => {
+  936298: ($0, $1) => {
     var SDL3 = Module["SDL3"];
     var numChannels = SDL3.audio_recording.currentRecordingBuffer.numberOfChannels;
     for (var c = 0; c < numChannels; ++c) {
@@ -20177,11 +20182,11 @@ var ASM_CONSTS = {
       }
     }
   },
-  936761: () => {
+  936925: () => {
     Module["SDL3"].camera = {};
   },
-  936793: () => (navigator.mediaDevices === undefined) ? 0 : 1,
-  936852: ($0, $1, $2, $3, $4) => {
+  936957: () => (navigator.mediaDevices === undefined) ? 0 : 1,
+  937016: ($0, $1, $2, $3, $4) => {
     const device = $0;
     const w = $1;
     const h = $2;
@@ -20255,7 +20260,7 @@ var ASM_CONSTS = {
       outcome(device, 0, 0, 0, 0);
     });
   },
-  939158: () => {
+  939322: () => {
     const SDL3 = Module["SDL3"];
     if ((typeof (SDL3) === "undefined") || (typeof (SDL3.camera) === "undefined") || (typeof (SDL3.camera.stream) === "undefined")) {
       return;
@@ -20263,7 +20268,7 @@ var ASM_CONSTS = {
     SDL3.camera.stream.getTracks().forEach(track => track.stop());
     SDL3.camera = {};
   },
-  939409: ($0, $1, $2) => {
+  939573: ($0, $1, $2) => {
     const w = $0;
     const h = $1;
     const rgba = $2;
@@ -20276,19 +20281,19 @@ var ASM_CONSTS = {
     HEAPU8.set(imgrgba, rgba);
     return 1;
   },
-  939787: () => {
+  939951: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       Module["SDL3"].camera = undefined;
     }
   },
-  939874: $0 => {
+  940038: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"] || !gamepad["vibrationActuator"]["effects"] || !gamepad["vibrationActuator"]["effects"]["includes"]("trigger-rumble")) {
       return false;
     }
     return true;
   },
-  940120: $0 => {
+  940284: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -20304,7 +20309,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  940585: $0 => {
+  940749: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
@@ -20320,14 +20325,14 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  941057: $0 => {
+  941221: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return 0;
     }
     return gamepad["id"]["toLowerCase"]()["indexOf"]("xinput") >= 0;
   },
-  941200: () => {
+  941364: () => {
     const os = ([ "Android", "Linux", "iPhone", "Macintosh", "Windows" ]);
     const ua = navigator["userAgent"];
     for (let i = 0; i < os.length; i++) {
@@ -20337,7 +20342,7 @@ var ASM_CONSTS = {
     }
     return 0;
   },
-  941410: ($0, $1, $2) => {
+  941574: ($0, $1, $2) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       stringToUTF8("\0", $1, $2);
@@ -20359,14 +20364,14 @@ var ASM_CONSTS = {
     }
     stringToUTF8(output.trim(), $1, $2);
   },
-  942088: $0 => {
+  942252: $0 => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad || !gamepad["vibrationActuator"]) {
       return false;
     }
     return true;
   },
-  942216: ($0, $1, $2, $3, $4) => {
+  942380: ($0, $1, $2, $3, $4) => {
     let gamepad = navigator["getGamepads"]()[$0];
     if (!gamepad) {
       return false;
@@ -20381,7 +20386,7 @@ var ASM_CONSTS = {
     });
     return true;
   },
-  942529: ($0, $1) => {
+  942693: ($0, $1) => {
     var buf = $0;
     var buflen = $1;
     var list = undefined;
@@ -20415,7 +20420,7 @@ var ASM_CONSTS = {
       setValue(buf + i, str.charCodeAt(i), "i8");
     }
   },
-  943237: ($0, $1, $2, $3) => {
+  943401: ($0, $1, $2, $3) => {
     var w = $0;
     var h = $1;
     var pixels = $2;
@@ -20446,7 +20451,7 @@ var ASM_CONSTS = {
     SDL3.ctx.putImageData(SDL3.image, 0, 0);
     return true;
   },
-  943986: () => {
+  944150: () => {
     var SDL3 = Module["SDL3"];
     SDL3["mouse_x"] = 0;
     SDL3["mouse_y"] = 0;
@@ -20472,7 +20477,7 @@ var ASM_CONSTS = {
       }
     });
   },
-  944674: ($0, $1, $2, $3, $4) => {
+  944838: ($0, $1, $2, $3, $4) => {
     var w = $0;
     var h = $1;
     var hot_x = $2;
@@ -20493,20 +20498,20 @@ var ASM_CONSTS = {
     stringToUTF8(url, urlBuf, url.length + 1);
     return urlBuf;
   },
-  945332: $0 => {
+  945496: $0 => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = UTF8ToString($0);
     }
   },
-  945415: () => {
+  945579: () => {
     if (Module["canvas"]) {
       Module["canvas"].style["cursor"] = "none";
     }
   },
-  945484: () => Module["SDL3"]["mouse_x"],
-  945522: () => Module["SDL3"]["mouse_y"],
-  945560: $0 => Module["SDL3"]["mouse_buttons"][$0],
-  945608: $0 => {
+  945648: () => Module["SDL3"]["mouse_x"],
+  945686: () => Module["SDL3"]["mouse_y"],
+  945724: $0 => Module["SDL3"]["mouse_buttons"][$0],
+  945772: $0 => {
     var data = $0;
     if (document.sdlEventHandlerLockKeysCheck) {
       document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
@@ -20518,10 +20523,10 @@ var ASM_CONSTS = {
     };
     document.addEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  946162: () => {
+  946326: () => {
     document.removeEventListener("keydown", document.sdlEventHandlerLockKeysCheck);
   },
-  946246: $0 => {
+  946410: $0 => {
     var target = document;
     if (target) {
       target.sdlEventHandlerMouseButtonUpGlobal = function(event) {
@@ -20535,7 +20540,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
     }
   },
-  946607: $0 => {
+  946771: $0 => {
     var SDL3 = Module["SDL3"];
     if (SDL3.makePointerEventCStruct === undefined) {
       SDL3.makePointerEventCStruct = function(left, top, event) {
@@ -20573,7 +20578,7 @@ var ASM_CONSTS = {
       };
     }
   },
-  947599: $0 => {
+  947763: $0 => {
     var id = UTF8ToString($0);
     try {
       var canvas = document.querySelector(id);
@@ -20583,23 +20588,23 @@ var ASM_CONSTS = {
     } catch (e) {}
     return false;
   },
-  947765: () => document.hasFocus(),
-  947797: () => {
+  947929: () => document.hasFocus(),
+  947961: () => {
     var target = document;
     if (target) {
       target.removeEventListener("pointerup", target.sdlEventHandlerMouseButtonUpGlobal);
       target.sdlEventHandlerMouseButtonUpGlobal = undefined;
     }
   },
-  947979: () => document.body.clientWidth,
-  948017: () => document.body.clientHeight,
-  948056: () => window.innerWidth,
-  948086: () => window.innerHeight,
-  948117: () => window.outerWidth,
-  948147: () => window.outerHeight,
-  948178: () => window.pageXOffset,
-  948209: () => window.pageYOffset,
-  948240: ($0, $1) => {
+  948143: () => document.body.clientWidth,
+  948181: () => document.body.clientHeight,
+  948220: () => window.innerWidth,
+  948250: () => window.innerHeight,
+  948281: () => window.outerWidth,
+  948311: () => window.outerHeight,
+  948342: () => window.pageXOffset,
+  948373: () => window.pageYOffset,
+  948404: ($0, $1) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -20637,7 +20642,7 @@ var ASM_CONSTS = {
       target.addEventListener("pointerup", target.sdlEventHandlerPointerGeneric);
     }
   },
-  949628: ($0, $1, $2) => {
+  949792: ($0, $1, $2) => {
     var target = document.querySelector(UTF8ToString($1));
     if (target) {
       var data = $0;
@@ -20717,7 +20722,7 @@ var ASM_CONSTS = {
       target.addEventListener("dragleave", SDL3.eventHandlerDropDragend);
     }
   },
-  951995: $0 => {
+  952159: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       var SDL3 = Module["SDL3"];
@@ -20733,7 +20738,7 @@ var ASM_CONSTS = {
       SDL3.eventHandlerDropDragend = undefined;
     }
   },
-  952825: $0 => {
+  952989: $0 => {
     var target = document.querySelector(UTF8ToString($0));
     if (target) {
       target.removeEventListener("pointerenter", target.sdlEventHandlerPointerEnter);
@@ -20748,7 +20753,7 @@ var ASM_CONSTS = {
       target.sdlEventHandlerPointerGeneric = undefined;
     }
   },
-  953559: () => {
+  953723: () => {
     if (!window.matchMedia) {
       return -1;
     }
@@ -20760,7 +20765,7 @@ var ASM_CONSTS = {
     }
     return -1;
   },
-  953768: () => {
+  953932: () => {
     if (typeof (Module["SDL3"]) !== "undefined") {
       var SDL3 = Module["SDL3"];
       SDL3.themeChangedMatchMedia.removeEventListener("change", SDL3.eventHandlerThemeChanged);
@@ -20768,14 +20773,14 @@ var ASM_CONSTS = {
       SDL3.eventHandlerThemeChanged = undefined;
     }
   },
-  954021: () => window.innerWidth,
-  954051: () => window.innerHeight,
-  954082: $0 => {
+  954185: () => window.innerWidth,
+  954215: () => window.innerHeight,
+  954246: $0 => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {
       _requestFullscreenThroughSDL($0);
     };
   },
-  954191: ($0, $1) => {
+  954355: ($0, $1) => {
     var pngData = HEAPU8.buffer instanceof ArrayBuffer ? HEAPU8.subarray($0, $0 + $1) : HEAPU8.slice($0, $0 + $1);
     var blob = new Blob([ pngData ], {
       type: "image/png"
@@ -20793,12 +20798,12 @@ var ASM_CONSTS = {
     }
     link.href = url;
   },
-  954684: () => {
+  954848: () => {
     Module["requestFullscreen"] = function(lockPointer, resizeCanvas) {};
   },
-  954758: () => window.innerWidth,
-  954788: () => window.innerHeight,
-  954819: $0 => {
+  954922: () => window.innerWidth,
+  954952: () => window.innerHeight,
+  954983: $0 => {
     var canvas = document.querySelector(UTF8ToString($0));
     canvas.SDL3_original_position = canvas.style.position;
     canvas.SDL3_original_top = canvas.style.top;
@@ -20819,7 +20824,7 @@ var ASM_CONSTS = {
     canvas.style.top = "0";
     canvas.style.left = "0";
   },
-  955517: () => {
+  955681: () => {
     var div = document.getElementById("SDL3_fill_document_background_elements");
     if (div) {
       if (div.SDL3_canvas_nextsib) {
@@ -20836,7 +20841,7 @@ var ASM_CONSTS = {
       div.remove();
     }
   },
-  956076: () => {
+  956240: () => {
     if (window.matchMedia) {
       var SDL3 = Module["SDL3"];
       SDL3.eventHandlerThemeChanged = function(event) {
@@ -20846,7 +20851,7 @@ var ASM_CONSTS = {
       SDL3.themeChangedMatchMedia.addEventListener("change", SDL3.eventHandlerThemeChanged);
     }
   },
-  956398: ($0, $1, $2, $3, $4) => {
+  956562: ($0, $1, $2, $3, $4) => {
     var title = UTF8ToString($0);
     var message = UTF8ToString($1);
     var background = UTF8ToString($2);
@@ -20866,7 +20871,7 @@ var ASM_CONSTS = {
     dialog.append(p);
     dialog.showModal();
   },
-  956939: ($0, $1, $2, $3, $4, $5, $6, $7) => {
+  957103: ($0, $1, $2, $3, $4, $5, $6, $7) => {
     var dialog_id = UTF8ToString($0);
     var text = UTF8ToString($1);
     var responseId = $2;
@@ -20907,7 +20912,7 @@ var ASM_CONSTS = {
     dialog.append(button);
     return true;
   },
-  957948: $0 => {
+  958112: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -20915,7 +20920,7 @@ var ASM_CONSTS = {
     }
     return dialog.open;
   },
-  958086: $0 => {
+  958250: $0 => {
     var dialog_id = UTF8ToString($0);
     var dialog = document.getElementById(dialog_id);
     if (!dialog) {
@@ -20927,17 +20932,17 @@ var ASM_CONSTS = {
       return 0;
     }
   },
-  958268: ($0, $1) => {
+  958432: ($0, $1) => {
     alert(UTF8ToString($0) + "\n\n" + UTF8ToString($1));
   },
-  958325: $0 => {
+  958489: $0 => {
     window.open(UTF8ToString($0), "_blank");
   },
-  958365: () => {
+  958529: () => {
     if (Module.clawDeveloperTextField) Module.clawDeveloperTextField.remove();
     Module.clawDeveloperTextField = null;
   },
-  958482: $0 => {
+  958646: $0 => {
     var editing = !!$0;
     if (Module.clawDeveloperEditing !== editing) window.dispatchEvent(new Event("claw-developer-editing"));
     Module.clawDeveloperEditing = editing;
@@ -21537,6 +21542,7 @@ var wasmImports = {
   /** @export */ invoke_viiiiiiiiii,
   /** @export */ invoke_viiiiiiiiiiiii,
   /** @export */ invoke_viiiiiiiiiiiiiii,
+  /** @export */ invoke_viij,
   /** @export */ invoke_viiji,
   /** @export */ invoke_viijii,
   /** @export */ invoke_vij,
@@ -21941,6 +21947,17 @@ function invoke_iif(index, a1, a2) {
   var sp = stackSave();
   try {
     return getWasmTableEntry(index)(a1, a2);
+  } catch (e) {
+    stackRestore(sp);
+    if (!(e instanceof EmscriptenEH)) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viij(index, a1, a2, a3) {
+  var sp = stackSave();
+  try {
+    getWasmTableEntry(index)(a1, a2, a3);
   } catch (e) {
     stackRestore(sp);
     if (!(e instanceof EmscriptenEH)) throw e;
